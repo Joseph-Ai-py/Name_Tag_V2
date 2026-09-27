@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.models.brand import Brand
 from app.models.brand_member import BrandMember
+from app.services.brand_state_service import create_initial_brand_state
 
 
 def create_brand(
@@ -26,6 +27,12 @@ def create_brand(
     )
 
     db.add(membership)
+
+    create_initial_brand_state(
+        db=db,
+        brand_id=brand.id,
+    )
+
     db.commit()
     db.refresh(brand)
 

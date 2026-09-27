@@ -10,6 +10,10 @@ from app.models.user import User  # noqa: F401
 from app.models.session import Session  # noqa: F401
 from app.models.brand import Brand  # noqa: F401
 from app.models.brand_member import BrandMember  # noqa: F401
+from app.models.brand_state import BrandState  # noqa: F401
+from app.models.proposal import Proposal  # noqa: F401
+from app.models.snapshot import Snapshot  # noqa: F401
+from app.models.history import History  # noqa: F401
 
 
 config = context.config
