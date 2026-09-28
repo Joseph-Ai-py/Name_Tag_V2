@@ -116,6 +116,7 @@ def apply_proposal(
     )
 
     db.add(history)
+    proposal.status = "applied"
 
     db.commit()
     db.refresh(proposal)
