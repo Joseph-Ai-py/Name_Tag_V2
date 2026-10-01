@@ -1,8 +1,0 @@
-fastapi
-uvicorn[standard]
-sqlalchemy
-alembic
-pydantic
-pydantic-settings
-python-dotenv
-argon2-cffiemail-validator
