@@ -6,7 +6,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.config import get_settings
 from app.dependencies import get_database
+from app.llm.gateway import get_llm_gateway
 from app.main import app
 from app.db.base import Base
 from app.models.brand import Brand
@@ -46,6 +48,16 @@ def client() -> Generator[TestClient, None, None]:
         app.dependency_overrides.clear()
         Base.metadata.drop_all(engine)
         engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def use_mock_llm_for_tests(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LLM_PROVIDER", "mock")
+    get_settings.cache_clear()
+    get_llm_gateway.cache_clear()
+    yield
+    get_settings.cache_clear()
+    get_llm_gateway.cache_clear()
 
 
 def signup(client: TestClient, email: str) -> None:

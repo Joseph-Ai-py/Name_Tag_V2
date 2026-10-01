@@ -1,3 +1,17 @@
+
+
+def test_conversation_can_be_deleted_by_brand_member(client: TestClient) -> None:
+    signup(client, "delete-conversation@example.com")
+    brand_id = create_brand(client)
+    conversation = client.post(
+        f"/api/brands/{brand_id}/conversations",
+        json={"title": "Temporary chat"},
+    )
+    conversation_id = conversation.json()["id"]
+
+    deleted = client.delete(f"/api/conversations/{conversation_id}")
+    assert deleted.status_code == 204
+    assert client.get(f"/api/conversations/{conversation_id}").status_code == 404
 from fastapi.testclient import TestClient
 
 from conftest import signup

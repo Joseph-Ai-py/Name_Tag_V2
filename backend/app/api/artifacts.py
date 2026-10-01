@@ -5,7 +5,7 @@ from app.core.permissions import require_editor_role
 from app.dependencies import get_current_user, get_database
 from app.models.user import User
 from app.schemas.artifact import ArtifactCreateRequest, ArtifactResponse
-from app.services.artifact_service import change_artifact_status, create_artifact, get_artifact, get_brand_artifacts
+from app.services.artifact_service import apply_artifact, change_artifact_status, create_artifact, get_artifact, get_brand_artifacts
 from app.services.brand_service import get_brand_membership
 
 router = APIRouter(tags=["artifacts"])
@@ -59,6 +59,15 @@ def set_artifact_status(brand_id: str, artifact_id: str, next_status: str, curre
 @router.post("/api/brands/{brand_id}/artifacts/{artifact_id}/approve", response_model=ArtifactResponse)
 def approve_artifact_endpoint(brand_id: str, artifact_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_database)):
     return set_artifact_status(brand_id, artifact_id, "approved", current_user, db)
+
+
+@router.post("/api/brands/{brand_id}/artifacts/{artifact_id}/apply", response_model=ArtifactResponse)
+def apply_artifact_endpoint(brand_id: str, artifact_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_database)):
+    artifact = get_accessible_artifact(db, brand_id, artifact_id, current_user)
+    try:
+        return to_response(apply_artifact(db, artifact, current_user.id))
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.post("/api/brands/{brand_id}/artifacts/{artifact_id}/reject", response_model=ArtifactResponse)

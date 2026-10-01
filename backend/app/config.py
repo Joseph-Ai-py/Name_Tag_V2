@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./name_tag.db"
     llm_provider: str = "mock"
     gemini_api_key: str | None = None
-    gemini_model: str = "gemini-2.5-flash"
+    gemini_model: str = "gemini-3-flash-preview"
 
     session_cookie_name: str = "name_tag_session"
     session_cookie_secure: bool = False

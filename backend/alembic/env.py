@@ -17,6 +17,15 @@ from app.models.history import History  # noqa: F401
 from app.models.conversation import Conversation  # noqa: F401
 from app.models.message import Message  # noqa: F401
 from app.models.artifact import Artifact  # noqa: F401
+from app.models.research_job import ResearchJob  # noqa: F401
+from app.models.research_report import ResearchReport  # noqa: F401
+from app.models.research_source import ResearchSource  # noqa: F401
+from app.models.research_finding import ResearchFinding  # noqa: F401
+from app.models.research_event import ResearchEvent  # noqa: F401
+from app.models.asset import Asset  # noqa: F401
+from app.models.document import Document  # noqa: F401
+from app.models.document_block import DocumentBlock  # noqa: F401
+from app.models.usage_event import UsageEvent  # noqa: F401
 
 
 config = context.config

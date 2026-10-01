@@ -74,3 +74,9 @@ def get_messages(
 		.order_by(Message.created_at.asc())
 	)
 	return list(result.scalars().all())
+
+
+def delete_conversation(db: Session, conversation: Conversation) -> None:
+	db.query(Message).filter(Message.conversation_id == conversation.id).delete()
+	db.delete(conversation)
+	db.commit()

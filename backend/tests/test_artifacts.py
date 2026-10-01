@@ -52,3 +52,24 @@ def test_user_cannot_access_another_users_artifact(client: TestClient) -> None:
     assert client.get(
         f"/api/brands/{brand_id}/artifacts/{artifact_id}"
     ).status_code == 404
+
+
+def test_artifact_apply_updates_brand_state(client: TestClient) -> None:
+    signup(client, "apply-artifact@example.com")
+    brand_id = create_brand(client)
+    created = client.post(
+        f"/api/brands/{brand_id}/artifacts",
+        json={
+            "type": "brand_strategy",
+            "title": "Selected direction",
+            "content": {"positioning": "문제를 해결하는 AI Product Builder"},
+        },
+    )
+    artifact_id = created.json()["id"]
+
+    applied = client.post(f"/api/brands/{brand_id}/artifacts/{artifact_id}/apply")
+    assert applied.status_code == 200, applied.text
+    assert applied.json()["status"] == "applied"
+
+    state = client.get(f"/api/brands/{brand_id}/state")
+    assert state.json()["state"]["brand"]["positioning"] == "문제를 해결하는 AI Product Builder"

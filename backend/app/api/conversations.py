@@ -12,6 +12,7 @@ from app.schemas.conversation import (
 from app.services.brand_service import get_brand_membership
 from app.services.conversation_service import (
     create_conversation,
+    delete_conversation,
     create_message,
     get_brand_conversations,
     get_conversation,
@@ -147,3 +148,16 @@ def list_messages_endpoint(
         message_response(item)
         for item in get_messages(db, conversation.id)
     ]
+
+
+@router.delete(
+    "/api/conversations/{conversation_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_conversation_endpoint(
+    conversation_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_database),
+):
+    conversation = get_accessible_conversation(db, conversation_id, current_user)
+    delete_conversation(db, conversation)
