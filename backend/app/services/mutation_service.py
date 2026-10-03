@@ -69,9 +69,16 @@ def validate_brand_state_change_paths(changes: Any) -> None:
     if not changes:
         raise ValueError("BrandState changes cannot be empty")
 
-    for path in flatten_state_paths("", changes):
-        if path not in ALLOWED_PATHS:
+    def validate_path(path: str, value: Any) -> None:
+        if path in ALLOWED_PATHS:
+            return
+        if not isinstance(value, dict):
             raise ValueError(f"Unsupported BrandState path: {path}")
+        for key, nested in value.items():
+            validate_path(f"{path}.{key}" if path else key, nested)
+
+    for path, value in changes.items():
+        validate_path(path, value)
 
 
 def apply_changes(

@@ -25,7 +25,7 @@ from app.tools.executor import ToolExecutor
 
 MAX_LLM_CALLS = 3
 MAX_TOOL_CALLS = 5
-MAX_ITERATIONS = 2
+MAX_ITERATIONS = 3
 
 
 def _select_next_tool(route: str, message: str, executed_tools: list[str]) -> str | None:
@@ -33,8 +33,12 @@ def _select_next_tool(route: str, message: str, executed_tools: list[str]) -> st
         return "get_brand_state"
     if route == "brand" and "get_brand_context" not in executed_tools:
         return "get_brand_context"
+    if route == "brand" and any(keyword in message for keyword in ("포지셔닝", "positioning", "개선")) and "run_employee_meeting" not in executed_tools:
+        return "run_employee_meeting"
     if route in {"business", "customer", "visual", "research"} and not executed_tools:
         return "get_brand_context"
+    if route == "research" and "create_research_job" not in executed_tools:
+        return "create_research_job"
     if route == "conversation" and any(keyword in message.lower() for keyword in ("state", "context", "현황", "맥락")):
         return "get_brand_state"
     return None
@@ -102,11 +106,16 @@ def run_agent(
         if len(executed_tools) >= MAX_TOOL_CALLS:
             raise RuntimeError("Agent tool call limit exceeded")
         try:
-            tool_result = ToolExecutor().execute(tool_name, tool_context, task=route)
+            tool_arguments = {"task": route}
+            if tool_name == "run_employee_meeting":
+                tool_arguments = {"agenda": message, "mode": "full" if route == "brand" else "lite"}
+            elif tool_name == "create_research_job":
+                tool_arguments = {"query": message}
+            tool_result = ToolExecutor().execute(tool_name, tool_context, **tool_arguments)
             tool_results[tool_name] = tool_result
-            db.add(ToolCall(agent_run_id=agent_run.id, tool_name=tool_name, status="completed", arguments={"task": route}, result=tool_result))
+            db.add(ToolCall(agent_run_id=agent_run.id, tool_name=tool_name, status="completed", arguments=tool_arguments, result=tool_result))
         except Exception as exc:
-            db.add(ToolCall(agent_run_id=agent_run.id, tool_name=tool_name, status="failed", arguments={"task": route}, result={"error": str(exc)}))
+            db.add(ToolCall(agent_run_id=agent_run.id, tool_name=tool_name, status="failed", arguments=tool_arguments, result={"error": str(exc)}))
             agent_run.status = "failed"
             agent_run.completed_at = datetime.now(timezone.utc)
             db.commit()
@@ -128,7 +137,10 @@ def run_agent(
     artifact = None
     proposal_id = None
     proposal_error = None
-    if llm_response.proposed_changes:
+    meeting_result = tool_results.get("run_employee_meeting")
+    if isinstance(meeting_result, dict):
+        proposal_id = meeting_result.get("proposal_id")
+    if llm_response.proposed_changes and proposal_id is None:
         try:
             proposal = create_proposal(
                 db=db,

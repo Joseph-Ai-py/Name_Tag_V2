@@ -34,12 +34,35 @@ def change_artifact_status(db: Session, artifact: Artifact, status: str) -> Arti
 def artifact_brand_changes(artifact: Artifact) -> dict[str, object]:
 	changes: dict[str, object] = {}
 	content = artifact.content
+	field_aliases = {
+		("customer", "target_segment"): "customer.target",
+		("customer", "target"): "customer.target",
+		("customer", "persona"): "customer.persona",
+		("customer", "needs"): "customer.needs",
+		("customer", "pain_points"): "customer.pain_points",
+		("customer", "jtbd"): "customer.jtbd",
+		("brand", "positioning"): "brand.positioning",
+		("brand", "key_message"): "brand.key_message",
+		("brand", "core_value"): "brand.values",
+		("brand", "value_proposition"): "brand.key_message",
+		("brand", "brand_essence"): "brand.positioning",
+		("brand", "key_elements"): "brand.story",
+		("brand", "target_slogan"): "brand.tagline",
+	}
+	brand_aliases = {
+		"core_value": "brand.values",
+		"value_proposition": "brand.key_message",
+		"brand_essence": "brand.positioning",
+		"key_elements": "brand.story",
+		"target_slogan": "brand.tagline",
+	}
 	for section in ("business", "market", "customer", "brand", "visual"):
 		section_values = content.get(section)
 		if isinstance(section_values, dict):
 			for field, value in section_values.items():
-				if f"{section}.{field}" in ALLOWED_PATHS:
-					changes[f"{section}.{field}"] = value
+				candidate = field_aliases.get((section, field), f"{section}.{field}")
+				if candidate in ALLOWED_PATHS:
+					changes[candidate] = value
 
 	section_by_type = {
 		"brand_strategy": "brand",
@@ -51,8 +74,32 @@ def artifact_brand_changes(artifact: Artifact) -> dict[str, object]:
 	section = section_by_type.get(artifact.type)
 	if section:
 		for field, value in content.items():
-			if f"{section}.{field}" in ALLOWED_PATHS:
-				changes[f"{section}.{field}"] = value
+			normalized_field = str(field).strip().lower().replace(" ", "_")
+			candidate = brand_aliases.get(normalized_field) if section == "brand" else None
+			candidate = candidate or field_aliases.get((section, field), f"{section}.{field}")
+			if candidate in ALLOWED_PATHS:
+				changes[candidate] = value
+	for nested in content.values():
+		if not isinstance(nested, dict):
+			continue
+		for field, value in nested.items():
+			normalized_field = str(field).strip().lower().replace(" ", "_")
+			candidate = brand_aliases.get(normalized_field)
+			if candidate is None:
+				for section_name in ("business", "market", "customer", "brand", "visual"):
+					candidate = field_aliases.get((section_name, normalized_field))
+					if candidate:
+						break
+			if candidate in ALLOWED_PATHS:
+				changes[candidate] = value
+	if artifact.type == "brand_identity":
+		for nested in content.values():
+			if not isinstance(nested, dict):
+				continue
+			for field, value in nested.items():
+				candidate = brand_aliases.get(str(field).strip().lower().replace(" ", "_"))
+				if candidate in ALLOWED_PATHS:
+					changes[candidate] = value
 	return changes
 
 

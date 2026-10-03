@@ -23,6 +23,7 @@ class ToolRegistry:
 tool_registry = ToolRegistry([
 	ToolDefinition("get_brand_state", "read"),
 	ToolDefinition("get_brand_context", "read"),
+	ToolDefinition("run_employee_meeting", "write"),
 	ToolDefinition("propose_brand_change", "write"),
 	ToolDefinition("apply_brand_change", "action"),
 	ToolDefinition("get_research_job", "read"),

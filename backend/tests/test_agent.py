@@ -108,7 +108,7 @@ def test_agent_brand_request_creates_pending_proposal_without_mutation(client: T
         assert run is not None
         assert run.status == "completed"
         calls = db.query(ToolCall).filter(ToolCall.agent_run_id == run.id).all()
-        assert [call.tool_name for call in calls] == ["get_brand_state", "get_brand_context"]
+        assert [call.tool_name for call in calls] == ["get_brand_state", "get_brand_context", "run_employee_meeting"]
         assert all(call.status == "completed" for call in calls)
 
         runs = client.get(f"/api/agent/brands/{brand_id}/runs")
@@ -117,6 +117,7 @@ def test_agent_brand_request_creates_pending_proposal_without_mutation(client: T
         assert [call["tool_name"] for call in runs.json()[0]["tool_calls"]] == [
             "get_brand_state",
             "get_brand_context",
+            "run_employee_meeting",
         ]
     finally:
         db.close()
@@ -132,10 +133,27 @@ def test_agent_rejects_invalid_structured_proposal_without_mutation(client: Test
     monkeypatch.setattr(agent_service.SkillExecutor, "execute", invalid_response)
     response = client.post(
         "/api/agent/chat",
-        json={"brand_id": brand_id, "message": "포지셔닝을 검토해줘"},
+        json={"brand_id": brand_id, "message": "일반적인 브랜드 설명을 해줘"},
     )
     assert response.status_code == 200, response.text
     assert response.json()["proposal_id"] is None
     assert "Unsupported BrandState path" in response.json()["context"]["proposal_error"]
     state = client.get(f"/api/brands/{brand_id}/state").json()
     assert state["version"] == 1
+
+
+def test_agent_research_request_creates_approval_pending_job(client: TestClient) -> None:
+    signup(client, "agent-research@example.com")
+    brand_id = create_brand(client)
+    response = client.post(
+        "/api/agent/chat",
+        json={"brand_id": brand_id, "message": "우리 시장과 경쟁사를 조사해줘"},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["route"] == "research"
+    job_result = body["context"]["tool_results"]["create_research_job"]
+    assert job_result["status"] == "planning"
+    job = client.get(f"/api/research/jobs/{job_result['job_id']}")
+    assert job.status_code == 200
+    assert job.json()["status"] == "planning"

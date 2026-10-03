@@ -15,6 +15,7 @@ from app.services.research_service import (
     get_report_findings,
     get_research_report,
 )
+from app.services.meeting_service import get_meeting_decision, get_meeting_opinions, run_meeting
 from app.tools.base import ToolContext
 from app.tools.registry import tool_registry
 
@@ -28,6 +29,7 @@ class ToolExecutor:
         handlers = {
             "get_brand_state": self._get_brand_state,
             "get_brand_context": self._get_brand_context,
+            "run_employee_meeting": self._run_employee_meeting,
             "propose_brand_change": self._propose_brand_change,
             "apply_brand_change": self._apply_brand_change,
             "get_research_job": self._get_research_job,
@@ -61,6 +63,19 @@ class ToolExecutor:
         return {key: data.get(key, {}) for key in ("business", "market", "customer", "brand", "visual")}
 
     @staticmethod
+    def _run_employee_meeting(context: ToolContext, agenda: str, mode: str = "lite", **_: Any) -> dict:
+        meeting = run_meeting(context.db, context.brand_id, context.user_id, agenda, mode)
+        decision = get_meeting_decision(context.db, meeting.id)
+        return {
+            "meeting_id": meeting.id,
+            "status": meeting.status,
+            "participants": meeting.participants,
+            "opinions_count": len(get_meeting_opinions(context.db, meeting.id)),
+            "proposal_id": decision.proposal_id if decision else None,
+            "critic": meeting.critic,
+        }
+
+    @staticmethod
     def _propose_brand_change(context: ToolContext, title: str, summary: str, changes: dict) -> Any:
         return create_proposal(context.db, context.brand_id, context.user_id, title, summary, changes)
 
@@ -80,7 +95,13 @@ class ToolExecutor:
 
     @staticmethod
     def _create_research_job(context: ToolContext, query: str, plan: dict | None = None) -> Any:
-        return create_deep_research_job(context.db, context.brand_id, context.user_id, query, plan or create_research_plan(query))
+        job = create_deep_research_job(context.db, context.brand_id, context.user_id, query, plan or create_research_plan(query))
+        return {
+            "job_id": job.id,
+            "status": job.status,
+            "query": job.query,
+            "plan": job.plan,
+        }
 
     @staticmethod
     def _apply_research_finding(context: ToolContext, report_id: str, finding_id: str) -> Any:

@@ -29,7 +29,7 @@ import {
 	X,
 } from "lucide-react";
 
-type Section = "Overview" | "Business" | "Market" | "Customer" | "Brand" | "Visual" | "Research" | "Assets" | "History";
+type Section = "Overview" | "Business" | "Market" | "Customer" | "Brand" | "Visual" | "Research" | "Assets" | "Documents" | "History";
 type Artifact = { id: string; type: string; title: string; content: Record<string, unknown>; status: string; proposalId?: string };
 type Message = { role: "assistant" | "user"; text: string; artifact?: Artifact };
 type CurrentUser = { id: string; email: string };
@@ -40,6 +40,8 @@ type ThemeMode = "light" | "dark";
 type ResearchReport = { id: string; title: string; executive_summary: string; status: string; findings: Array<{ id: string; statement: string; confidence: string; applied: boolean }>; sources?: Array<{ title: string; url: string; publisher?: string | null }> };
 type HistoryEntry = { id: string; action: string; details: Record<string, unknown>; created_at: string };
 type Asset = { id: string; type: string; filename: string; mime_type: string; storage_path: string; metadata: Record<string, unknown>; created_at: string };
+type Snapshot = { id: string; version: number; created_at: string };
+type DocumentRecord = { id: string; title: string; blocks: Array<{ id: string; type: string; content: Record<string, unknown> }>; updated_at: string };
 
 function getArtifactOptions(artifact: Artifact | null): Array<Record<string, unknown>> | undefined {
 	if (!artifact) return undefined;
@@ -139,6 +141,8 @@ function Workspace({ onLogout, liveBrandId, user, theme, onToggleTheme }: { onLo
 	const [proposedFindingIds, setProposedFindingIds] = useState<string[]>([]);
 	const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([]);
 	const [assets, setAssets] = useState<Asset[]>([]);
+	const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
+	const [documents, setDocuments] = useState<DocumentRecord[]>([]);
 	const conversationRef = useRef<HTMLDivElement>(null);
 	const composerInputRef = useRef<HTMLTextAreaElement>(null);
 	const shouldStickToBottom = useRef(true);
@@ -192,14 +196,18 @@ function Workspace({ onLogout, liveBrandId, user, theme, onToggleTheme }: { onLo
 		Promise.all([
 			api<HistoryEntry[]>(`/api/brands/${liveBrandId}/history`),
 			api<Asset[]>(`/api/brands/${liveBrandId}/assets`),
-		]).then(([history, loadedAssets]) => {
+			api<Snapshot[]>(`/api/brands/${liveBrandId}/snapshots`),
+			api<DocumentRecord[]>(`/api/brands/${liveBrandId}/documents`),
+		]).then(([history, loadedAssets, loadedSnapshots, loadedDocuments]) => {
 			setHistoryEntries(history);
 			setAssets(loadedAssets);
+			setSnapshots(loadedSnapshots);
+			setDocuments(loadedDocuments);
 		}).catch(() => undefined);
 	}, [liveBrandId]);
 	const brandName = liveState.brand.name || "새 Brand";
 	const nav = [
-		["Overview", LayoutDashboard], ["Business", BriefcaseBusiness], ["Market", BarChart3], ["Customer", Users], ["Brand", Sparkles], ["Visual", Palette], ["Research", Search], ["Assets", FolderOpen], ["History", HistoryIcon],
+		["Overview", LayoutDashboard], ["Business", BriefcaseBusiness], ["Market", BarChart3], ["Customer", Users], ["Brand", Sparkles], ["Visual", Palette], ["Research", Search], ["Assets", FolderOpen], ["Documents", FileText], ["History", HistoryIcon],
 	] as const;
 	const sendMessage = async (event: FormEvent) => {
 		event.preventDefault();
@@ -246,6 +254,7 @@ function Workspace({ onLogout, liveBrandId, user, theme, onToggleTheme }: { onLo
 	};
 	const updateArtifactStatus = async (artifact: Artifact, status: "approve" | "reject") => {
 		if (!liveBrandId) return;
+		try {
 		if (artifact.proposalId) {
 			if (status === "approve") {
 				await api(`/api/brands/${liveBrandId}/proposals/${artifact.proposalId}/approve`, { method: "POST" });
@@ -264,6 +273,9 @@ function Workspace({ onLogout, liveBrandId, user, theme, onToggleTheme }: { onLo
 		}
 		setMessages((current) => current.map((message) => message.artifact?.id === artifact.id ? { ...message, artifact: { ...artifact, status: status === "approve" ? "applied" : "rejected" } } : message));
 		setActiveArtifact(null);
+		} catch (caught) {
+			setMessages((current) => [...current, { role: "assistant", text: caught instanceof Error ? `제안을 적용하지 못했어요: ${caught.message}` : "제안을 적용하지 못했어요." }]);
+		}
 	};
 	const continueWithOption = async (option: Record<string, unknown>) => {
 		if (!liveBrandId) return;
@@ -325,6 +337,30 @@ function Workspace({ onLogout, liveBrandId, user, theme, onToggleTheme }: { onLo
 		anchor.click();
 		URL.revokeObjectURL(url);
 	};
+	const restoreSnapshot = async (snapshotId: string) => {
+		if (!liveBrandId) return;
+		await api(`/api/brands/${liveBrandId}/snapshots/${snapshotId}/restore`, { method: "POST" });
+		const payload = await api<BrandStatePayload>(`/api/brands/${liveBrandId}/state`);
+		const state = payload.state;
+		setLiveState({ business: { service: String(state.business?.service ?? ""), problem: String(state.business?.problem ?? "") }, market: { trend: String(state.market?.trends ?? ""), competitors: String(state.market?.competitors ?? "") }, customer: { target: String(state.customer?.target ?? ""), need: String(state.customer?.needs ?? "") }, brand: { name: String(state.brand?.name ?? ""), positioning: String(state.brand?.positioning ?? ""), tone: String(state.brand?.tone ?? "") }, visual: { mood: String(state.visual?.mood ?? ""), palette: [] } });
+		const history = await api<HistoryEntry[]>(`/api/brands/${liveBrandId}/history`);
+		setHistoryEntries(history);
+	};
+	const createDocument = async () => {
+		if (!liveBrandId) return;
+		const document = await api<DocumentRecord>(`/api/brands/${liveBrandId}/documents`, { method: "POST", body: JSON.stringify({ title: "새 Brand 문서" }) });
+		setDocuments((current) => [document, ...current]);
+	};
+	const createAsset = async (filename: string) => {
+		if (!liveBrandId || !filename.trim()) return;
+		const asset = await api<Asset>(`/api/brands/${liveBrandId}/assets`, { method: "POST", body: JSON.stringify({ type: "document", filename: filename.trim(), mime_type: "text/plain", storage_path: `workspace://${filename.trim()}`, metadata: { source: "workspace" } }) });
+		setAssets((current) => [asset, ...current]);
+	};
+	const deleteAsset = async (assetId: string) => {
+		if (!liveBrandId) return;
+		await api(`/api/brands/${liveBrandId}/assets/${assetId}`, { method: "DELETE" });
+		setAssets((current) => current.filter((asset) => asset.id !== assetId));
+	};
 	return (
 		<div className="workspace-shell">
 			<aside className="sidebar">
@@ -339,7 +375,7 @@ function Workspace({ onLogout, liveBrandId, user, theme, onToggleTheme }: { onLo
 				<header className="topbar"><div><p className="breadcrumb">{brandName} <span>/</span> {section}</p><h2>{section === "Overview" ? "브랜드의 현재 모습" : section}</h2></div><div className="top-actions"><span className="live-pill"><i /> {liveBrandId ? "Connected" : "Demo mode"}</span><ThemeToggle theme={theme} onToggle={onToggleTheme} /><button className="icon-button" title="문서 보기"><FileText size={17} /></button><button className="export-button" onClick={() => exportBrand().catch(() => undefined)}>Export <ChevronDown size={15} /></button></div></header>
 				<div className="content-scroll">
 					<section className="welcome-row"><div><p className="eyebrow">MONDAY, OCTOBER 01</p><h1>좋은 시작이에요,<br /><em>{user.email.split("@")[0]}.</em></h1></div></section>
-					{section === "Overview" ? <Overview state={liveState} /> : section === "Research" ? <ResearchView query={researchQuery} setQuery={setResearchQuery} report={researchReport} busy={researchBusy} proposedFindingIds={proposedFindingIds} onProposeFinding={proposeResearchFinding} onRun={runDeepResearch} /> : section === "Assets" ? <AssetsView assets={assets} /> : section === "History" ? <HistoryView entries={historyEntries} /> : <SectionView section={section} state={liveState} />}
+					{section === "Overview" ? <Overview state={liveState} /> : section === "Research" ? <ResearchView query={researchQuery} setQuery={setResearchQuery} report={researchReport} busy={researchBusy} proposedFindingIds={proposedFindingIds} onProposeFinding={proposeResearchFinding} onRun={runDeepResearch} /> : section === "Assets" ? <AssetsView assets={assets} onCreate={createAsset} onDelete={deleteAsset} /> : section === "Documents" ? <DocumentsView documents={documents} onCreate={createDocument} /> : section === "History" ? <HistoryView entries={historyEntries} snapshots={snapshots} onRestore={restoreSnapshot} /> : <SectionView section={section} state={liveState} />}
 				</div>
 			</main>
 			<aside className="consultant-panel legacy-consultant"><div className="consultant-head"><div><span className="ai-orb"><img src={theme === "dark" ? "/brand/symbol-white.png" : "/brand/symbol-black.png"} alt="" /></span><div><strong>AI Consultant</strong><small>Brand context aware</small></div></div><div className="consultant-actions"><button onClick={() => deleteCurrentChat().catch(() => undefined)} disabled={!conversationId} title="현재 대화 삭제"><Trash2 size={15} /></button><span className="online-dot" /></div></div><div className="conversation" ref={conversationRef} onScroll={(event) => { const target = event.currentTarget; shouldStickToBottom.current = target.scrollHeight - target.scrollTop - target.clientHeight < 80; }}>{messages.length === 0 && <div className="chat-empty"><MessageSquare size={19} /><strong>새 대화를 시작하세요</strong><span>사업, 고객, 시장에 대해 자유롭게 물어보세요.</span></div>}{messages.map((message, index) => <div key={`${message.role}-${index}`} className={`chat-message ${message.role}`}>{message.role === "assistant" && <span className="message-avatar"><img src={theme === "dark" ? "/brand/symbol-white.png" : "/brand/symbol-black.png"} alt="NAME TAG AI" /></span>}<div className="message-body"><span className="message-label">{message.role === "assistant" ? "AI CONSULTANT" : "YOU"}</span><div className="message-content"><ReactMarkdown remarkPlugins={[remarkGfm]}>{message.text}</ReactMarkdown></div>{message.role === "assistant" && index === 0 && <div className="suggestion"><Lightbulb size={15} /><span>Positioning을 더 구체화해볼까요?</span><ArrowUpRight size={14} /></div>}</div></div>)}{saving && <div className="typing"><i /><i /><i /></div>}<div ref={messagesEndRef} /></div><form className="composer" onSubmit={sendMessage}><textarea ref={composerInputRef} value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} rows={1} placeholder="무엇을 만들고 싶나요?" aria-label="AI Consultant 메시지" /><button type="submit" aria-label="메시지 보내기"><Send size={17} /></button></form><div className="composer-hint"><span>⌘/Ctrl Enter</span> to send <span className="hint-right">Context: {section}</span></div></aside>
@@ -361,16 +397,21 @@ function Overview({ state }: { state: typeof demoState }) {
 	</div>;
 }
 
-function AssetsView({ assets }: { assets: Asset[] }) {
-	return <section className="section-view"><div className="section-title"><span className="eyebrow">ASSET LIBRARY</span><h3>{assets.length ? `${assets.length}개의 브랜드 자산` : "아직 저장된 자산이 없어요."}</h3><p>업로드된 파일과 생성된 브랜드 자료를 한 곳에서 확인합니다.</p></div>{assets.length ? <div className="overview-grid">{assets.map((asset) => <article className="metric-card paper" key={asset.id}><div className="card-kicker">{asset.type}</div><h4>{asset.filename}</h4><p>{asset.mime_type}</p><small>{new Date(asset.created_at).toLocaleDateString("ko-KR")}</small></article>)}</div> : <div className="empty-action"><div className="empty-icon"><FolderOpen size={22} /></div><h4>첫 번째 브랜드 자산을 저장해보세요.</h4><p>AI Consultant가 만든 결과물이나 브랜드 파일이 이곳에 쌓입니다.</p></div>}</section>;
+function AssetsView({ assets, onCreate, onDelete }: { assets: Asset[]; onCreate: (filename: string) => Promise<void>; onDelete: (assetId: string) => Promise<void> }) {
+	const [filename, setFilename] = useState("");
+	return <section className="section-view"><div className="section-title"><span className="eyebrow">ASSET LIBRARY</span><h3>{assets.length ? `${assets.length}개의 브랜드 자산` : "아직 저장된 자산이 없어요."}</h3><p>업로드된 파일과 생성된 브랜드 자료를 한 곳에서 확인합니다.</p><div className="asset-create-row"><input value={filename} onChange={(event) => setFilename(event.target.value)} placeholder="파일 이름" /><button className="dark-button" type="button" disabled={!filename.trim()} onClick={() => { onCreate(filename).catch(() => undefined); setFilename(""); }}><Plus size={15} /> 자산 저장</button></div></div>{assets.length ? <div className="overview-grid">{assets.map((asset) => <article className="metric-card paper" key={asset.id}><div className="card-kicker">{asset.type}</div><h4>{asset.filename}</h4><p>{asset.mime_type}</p><small>{new Date(asset.created_at).toLocaleDateString("ko-KR")}</small><button className="icon-button" type="button" title="자산 삭제" onClick={() => onDelete(asset.id).catch(() => undefined)}><Trash2 size={14} /></button></article>)}</div> : <div className="empty-action"><div className="empty-icon"><FolderOpen size={22} /></div><h4>첫 번째 브랜드 자산을 저장해보세요.</h4><p>AI Consultant가 만든 결과물이나 브랜드 파일이 이곳에 쌓입니다.</p></div>}</section>;
 }
 
-function HistoryView({ entries }: { entries: HistoryEntry[] }) {
-	return <section className="section-view"><div className="section-title"><span className="eyebrow">BRANDSTATE HISTORY</span><h3>{entries.length ? "브랜드가 이렇게 발전했어요." : "아직 변경 기록이 없어요."}</h3><p>승인된 제안과 Snapshot 복구 기록을 시간순으로 확인합니다.</p></div>{entries.length ? <div className="history-list">{entries.map((entry) => <article className="history-item" key={entry.id}><div><span className="card-kicker">{entry.action.replaceAll("_", " ")}</span><strong>{String(entry.details?.to_version ?? entry.details?.snapshot_version ?? "변경 기록")}</strong></div><time>{new Date(entry.created_at).toLocaleString("ko-KR")}</time></article>)}</div> : <div className="empty-action"><div className="empty-icon"><HistoryIcon size={22} /></div><h4>첫 번째 제안을 승인하면 기록이 시작됩니다.</h4><p>BrandState에 적용된 변화는 모두 이곳에서 추적할 수 있어요.</p></div>}</section>;
+function DocumentsView({ documents, onCreate }: { documents: DocumentRecord[]; onCreate: () => Promise<void> }) {
+	return <section className="section-view"><div className="section-title"><span className="eyebrow">DOCUMENTS</span><h3>{documents.length ? `${documents.length}개의 Brand 문서` : "아직 Brand 문서가 없어요."}</h3><p>AI가 만든 전략과 리서치 결과를 편집 가능한 문서로 관리합니다.</p><button className="dark-button" type="button" onClick={() => onCreate().catch(() => undefined)}><Plus size={15} /> 새 문서 만들기</button></div>{documents.length > 0 && <div className="overview-grid">{documents.map((document) => <article className="metric-card paper" key={document.id}><div className="card-kicker">DOCUMENT · {document.blocks.length} BLOCKS</div><h4>{document.title}</h4><p>마지막 수정 {new Date(document.updated_at).toLocaleDateString("ko-KR")}</p></article>)}</div>}</section>;
+}
+
+function HistoryView({ entries, snapshots, onRestore }: { entries: HistoryEntry[]; snapshots: Snapshot[]; onRestore: (snapshotId: string) => Promise<void> }) {
+	return <section className="section-view"><div className="section-title"><span className="eyebrow">BRANDSTATE HISTORY</span><h3>{entries.length ? "브랜드가 이렇게 발전했어요." : "아직 변경 기록이 없어요."}</h3><p>승인된 제안과 Snapshot 복구 기록을 시간순으로 확인합니다.</p></div>{entries.length ? <div className="history-list">{entries.map((entry) => <article className="history-item" key={entry.id}><div><span className="card-kicker">{entry.action.replaceAll("_", " ")}</span><strong>{String(entry.details?.to_version ?? entry.details?.snapshot_version ?? "변경 기록")}</strong></div><time>{new Date(entry.created_at).toLocaleString("ko-KR")}</time></article>)}{snapshots.length > 0 && <div className="empty-action"><h4>이전 상태로 되돌리기</h4>{snapshots.slice(0, 3).map((snapshot) => <button className="dark-button" type="button" key={snapshot.id} onClick={() => onRestore(snapshot.id).catch(() => undefined)}>Version {snapshot.version} 복구</button>)}</div>}</div> : <div className="empty-action"><div className="empty-icon"><HistoryIcon size={22} /></div><h4>첫 번째 제안을 승인하면 기록이 시작됩니다.</h4><p>BrandState에 적용된 변화는 모두 이곳에서 추적할 수 있어요.</p></div>}</section>;
 }
 
 function SectionView({ section, state }: { section: Section; state: typeof demoState }) {
-	const values: Record<Section, [string, string, string]> = { Overview: ["", "", ""], Business: ["Problem / Solution", state.business.problem, state.business.service], Market: ["Market direction", state.market.trend, state.market.competitors], Customer: ["Primary audience", state.customer.target, state.customer.need], Brand: ["Positioning", state.brand.positioning, state.brand.tone], Visual: ["Visual direction", state.visual.mood, state.visual.palette.join("  ")], Research: ["Research workspace", "아직 저장된 Deep Research가 없습니다.", "AI Consultant에게 시장 조사를 요청해보세요."], Assets: ["Asset library", "", ""], History: ["BrandState history", "", ""] };
+	const values: Record<Section, [string, string, string]> = { Overview: ["", "", ""], Business: ["Problem / Solution", state.business.problem, state.business.service], Market: ["Market direction", state.market.trend, state.market.competitors], Customer: ["Primary audience", state.customer.target, state.customer.need], Brand: ["Positioning", state.brand.positioning, state.brand.tone], Visual: ["Visual direction", state.visual.mood, state.visual.palette.join("  ")], Research: ["Research workspace", "아직 저장된 Deep Research가 없습니다.", "AI Consultant에게 시장 조사를 요청해보세요."], Assets: ["Asset library", "", ""], Documents: ["Document library", "", ""], History: ["BrandState history", "", ""] };
 	const [label, title, detail] = values[section];
 	return <section className="section-view"><div className="section-title"><span className="eyebrow">{label}</span><h3>{title}</h3><p>{detail}</p></div><div className="empty-action"><div className="empty-icon"><BookOpen size={22} /></div><h4>{section}를 더 선명하게 만들까요?</h4><p>AI Consultant가 현재 Brand context를 읽고 다음 제안을 준비할 수 있어요.</p><button className="dark-button"><MessageCircle size={15} /> Consultant에게 요청</button></div></section>;
 }
