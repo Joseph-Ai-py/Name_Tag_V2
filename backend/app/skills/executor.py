@@ -34,4 +34,5 @@ class SkillExecutor:
             text=response.text,
             artifact_type=skill.artifact_type,
             artifact_content={"response": response.text},
+            proposed_changes=response.proposed_changes,
         )

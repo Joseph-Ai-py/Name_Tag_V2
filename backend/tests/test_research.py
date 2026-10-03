@@ -144,3 +144,33 @@ def test_research_finding_creates_pending_proposal(client: TestClient) -> None:
     )
     assert proposal.status_code == 201, proposal.text
     assert proposal.json()["status"] == "pending"
+
+
+def test_failed_research_job_can_retry(client: TestClient) -> None:
+    signup(client, "retry@example.com")
+    brand_id = create_brand(client)
+    plan = client.post("/api/research/plan", json={"brand_id": brand_id, "query": "재시도 가능한 조사"}).json()
+    created = client.post("/api/research/jobs", json={"brand_id": brand_id, "query": "재시도 가능한 조사", "plan": plan})
+    assert created.status_code == 201
+    job_id = created.json()["id"]
+
+    from app.dependencies import get_database
+    db_generator = client.app.dependency_overrides[get_database]()
+    db = next(db_generator)
+    try:
+        job = get_research_job(db, job_id)
+        job.status = "failed"
+        db.commit()
+    finally:
+        db.close()
+
+    retried = client.post(f"/api/research/jobs/{job_id}/retry")
+    assert retried.status_code == 200, retried.text
+    assert retried.json()["status"] == "queued"
+    db_generator = client.app.dependency_overrides[get_database]()
+    db = next(db_generator)
+    try:
+        run_deep_research_job(db, get_research_job(db, job_id))
+    finally:
+        db.close()
+    assert client.get(f"/api/research/jobs/{job_id}").json()["status"] == "completed"

@@ -26,6 +26,11 @@ from app.models.asset import Asset  # noqa: F401
 from app.models.document import Document  # noqa: F401
 from app.models.document_block import DocumentBlock  # noqa: F401
 from app.models.usage_event import UsageEvent  # noqa: F401
+from app.models.agent_run import AgentRun  # noqa: F401
+from app.models.tool_call import ToolCall  # noqa: F401
+from app.models.employee_meeting import EmployeeMeeting  # noqa: F401
+from app.models.meeting_opinion import MeetingOpinion  # noqa: F401
+from app.models.meeting_decision import MeetingDecision  # noqa: F401
 
 
 config = context.config

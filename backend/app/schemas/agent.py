@@ -16,4 +16,5 @@ class AgentChatResponse(BaseModel):
 	route: str
 	message: str
 	artifact: ArtifactResponse | None = None
+	proposal_id: str | None = None
 	context: dict[str, Any] = {}

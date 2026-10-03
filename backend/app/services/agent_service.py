@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -5,6 +6,8 @@ from sqlalchemy.orm import Session
 from app.agent.context_manager import build_context
 from app.agent.router import classify_message
 from app.models.user import User
+from app.models.agent_run import AgentRun
+from app.models.tool_call import ToolCall
 from app.skills.executor import SkillExecutor
 from app.services.artifact_service import create_artifact
 from app.services.brand_service import get_brand_membership
@@ -16,6 +19,7 @@ from app.services.conversation_service import (
     get_messages,
 )
 from app.services.usage_service import record_usage, start_usage
+from app.services.proposal_service import create_proposal
 from app.tools.base import ToolContext
 from app.tools.executor import ToolExecutor
 
@@ -24,15 +28,16 @@ MAX_TOOL_CALLS = 5
 MAX_ITERATIONS = 2
 
 
-def _required_tools_for_route(route: str) -> list[str]:
-    route_tools = {
-        "business": ["get_brand_context"],
-        "customer": ["get_brand_context"],
-        "brand": ["get_brand_state", "get_brand_context"],
-        "visual": ["get_brand_context"],
-        "research": ["get_brand_context"],
-    }
-    return route_tools.get(route, [])
+def _select_next_tool(route: str, message: str, executed_tools: list[str]) -> str | None:
+    if route == "brand" and "get_brand_state" not in executed_tools:
+        return "get_brand_state"
+    if route == "brand" and "get_brand_context" not in executed_tools:
+        return "get_brand_context"
+    if route in {"business", "customer", "visual", "research"} and not executed_tools:
+        return "get_brand_context"
+    if route == "conversation" and any(keyword in message.lower() for keyword in ("state", "context", "현황", "맥락")):
+        return "get_brand_state"
+    return None
 
 
 def run_agent(
@@ -70,6 +75,18 @@ def run_agent(
     create_message(db, conversation, "user", message, None)
 
     route = classify_message(message)
+    agent_run = AgentRun(
+        user_id=current_user.id,
+        brand_id=brand_id,
+        conversation_id=conversation.id,
+        route=route,
+        message=message,
+        status="running",
+        context=context,
+        result={},
+    )
+    db.add(agent_run)
+    db.flush()
     tool_context = ToolContext(
         db=db,
         user_id=current_user.id,
@@ -78,10 +95,22 @@ def run_agent(
     )
     executed_tools: list[str] = []
     tool_results: dict[str, Any] = {}
-    for tool_name in _required_tools_for_route(route):
+    for _ in range(MAX_ITERATIONS):
+        tool_name = _select_next_tool(route, message, executed_tools)
+        if tool_name is None:
+            break
         if len(executed_tools) >= MAX_TOOL_CALLS:
             raise RuntimeError("Agent tool call limit exceeded")
-        tool_results[tool_name] = ToolExecutor().execute(tool_name, tool_context, task=route)
+        try:
+            tool_result = ToolExecutor().execute(tool_name, tool_context, task=route)
+            tool_results[tool_name] = tool_result
+            db.add(ToolCall(agent_run_id=agent_run.id, tool_name=tool_name, status="completed", arguments={"task": route}, result=tool_result))
+        except Exception as exc:
+            db.add(ToolCall(agent_run_id=agent_run.id, tool_name=tool_name, status="failed", arguments={"task": route}, result={"error": str(exc)}))
+            agent_run.status = "failed"
+            agent_run.completed_at = datetime.now(timezone.utc)
+            db.commit()
+            raise
         executed_tools.append(tool_name)
     context["tool_results"] = tool_results
 
@@ -97,6 +126,22 @@ def run_agent(
     record_usage(db, current_user.id, brand_id, "chat", started_at)
 
     artifact = None
+    proposal_id = None
+    proposal_error = None
+    if llm_response.proposed_changes:
+        try:
+            proposal = create_proposal(
+                db=db,
+                brand_id=brand_id,
+                user_id=current_user.id,
+                title=f"{route.title()} 제안",
+                summary=llm_response.text,
+                changes=llm_response.proposed_changes,
+            )
+            proposal_id = proposal.id
+        except ValueError as exc:
+            proposal_error = str(exc)
+            context["proposal_error"] = proposal_error
     if llm_response.artifact_type is not None:
         artifact = create_artifact(
             db=db,
@@ -114,11 +159,22 @@ def run_agent(
         content=llm_response.text,
         artifact={"artifact_id": artifact.id} if artifact else None,
     )
+    agent_run.status = "completed"
+    agent_run.context = context
+    agent_run.result = {
+        "route": route,
+        "proposal_id": proposal_id,
+        "proposal_error": proposal_error,
+        "artifact_id": artifact.id if artifact else None,
+    }
+    agent_run.completed_at = datetime.now(timezone.utc)
+    db.commit()
 
     return {
         "conversation_id": conversation.id,
         "route": route,
         "message": llm_response.text,
         "artifact": artifact,
+        "proposal_id": proposal_id,
         "context": context,
     }

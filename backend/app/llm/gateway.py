@@ -52,10 +52,20 @@ class MockLLMGateway:
 			)
 
 		text, artifact_type, next_step = response
+		proposed_changes = None
+		if task == "brand":
+			proposed_changes = {
+				"brand.positioning": "복잡한 브랜드 결정을 선명한 실행으로 연결하는 workspace",
+			}
 		return LLMResponse(
 			text=text,
 			artifact_type=artifact_type,
-			artifact_content={"request": message, "next_step": next_step},
+			artifact_content={
+				"request": message,
+				"next_step": next_step,
+				"brand": {"positioning": proposed_changes["brand.positioning"]} if proposed_changes else {},
+			},
+			proposed_changes=proposed_changes,
 		)
 
 

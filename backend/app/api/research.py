@@ -29,42 +29,11 @@ from app.services.research_service import (
 	run_deep_research_job,
 	run_deep_research_background,
 	update_research_job_status,
+	build_research_proposal_changes,
 )
-from app.services.mutation_service import ALLOWED_PATHS
 from app.services.proposal_service import create_proposal, get_proposal
 
 router = APIRouter(prefix="/api/research", tags=["research"])
-
-
-def build_research_proposal_changes(finding) -> dict[str, str]:
-	field_aliases = {
-		"brand": "brand.positioning",
-		"positioning": "brand.positioning",
-		"target": "customer.target",
-		"customer": "customer.target",
-		"market": "market.competitors",
-		"competitors": "market.competitors",
-		"service": "business.service",
-		"business": "business.service",
-		"price": "business.pricing",
-		"pricing": "business.pricing",
-		"visual": "visual.mood",
-		"mood": "visual.mood",
-	}
-
-	changes: dict[str, str] = {}
-	for field in finding.suggested_fields or []:
-		candidate = str(field).strip().lower()
-		path = field_aliases.get(candidate, candidate)
-		if path in ALLOWED_PATHS:
-			changes[path] = finding.statement
-		elif candidate in ALLOWED_PATHS:
-			changes[candidate] = finding.statement
-
-	if not changes:
-		changes["brand.positioning"] = finding.statement
-
-	return changes
 
 
 def job_response(job) -> ResearchJobResponse:
@@ -190,6 +159,21 @@ def start_job(job_id: str, background_tasks: BackgroundTasks, current_user: User
 		raise HTTPException(status_code=409, detail=str(exc)) from exc
 	except Exception as exc:
 		raise HTTPException(status_code=502, detail="Deep Research provider failed") from exc
+
+
+@router.post("/jobs/{job_id}/retry", response_model=ResearchJobResponse)
+def retry_job(job_id: str, background_tasks: BackgroundTasks, current_user: User = Depends(get_current_user), db: Session = Depends(get_database)):
+	job = get_research_job(db, job_id)
+	if job is None:
+		raise HTTPException(status_code=404, detail="Research job not found")
+	membership = require_brand_member(db, job.brand_id, current_user.id)
+	require_editor_role(membership.role)
+	try:
+		job = update_research_job_status(db, job, "queued")
+		background_tasks.add_task(run_deep_research_background, job.id)
+		return job_response(job)
+	except ValueError as exc:
+		raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.get("/reports/{report_id}", response_model=ResearchReportResponse)

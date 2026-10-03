@@ -16,7 +16,7 @@ from app.config import get_settings
 from app.services.mutation_service import ALLOWED_PATHS
 
 
-def build_research_proposal_changes(finding: ResearchFinding | dict) -> dict:
+def build_research_proposal_changes(finding: ResearchFinding | dict) -> dict[str, str]:
 	field_aliases = {
 		"brand": "brand.positioning",
 		"positioning": "brand.positioning",
@@ -39,14 +39,14 @@ def build_research_proposal_changes(finding: ResearchFinding | dict) -> dict:
 		summary = finding.statement
 		suggested_fields = finding.suggested_fields or []
 
-	changes: dict[str, dict[str, str]] = {}
+	changes: dict[str, str] = {}
 	for field in suggested_fields:
 		candidate = str(field).strip().lower()
 		path = field_aliases.get(candidate, candidate)
 		if path in ALLOWED_PATHS:
-			changes[path] = {"summary": summary}
+			changes[path] = summary
 	if not changes:
-		changes["brand.positioning"] = {"summary": summary}
+		changes["brand.positioning"] = summary
 	return changes
 
 
@@ -83,6 +83,7 @@ def update_research_job_status(db: Session, job: ResearchJob, status: str) -> Re
 		"planning": {"approved", "cancelled"},
 		"approved": {"queued", "cancelled"},
 		"queued": {"cancelled"},
+		"failed": {"queued"},
 	}
 	if status not in allowed.get(job.status, set()):
 		raise ValueError(f"Cannot change research job from {job.status} to {status}")

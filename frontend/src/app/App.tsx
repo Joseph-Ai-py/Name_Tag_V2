@@ -9,6 +9,8 @@ import {
 	ChevronDown,
 	CircleCheck,
 	FileText,
+	FolderOpen,
+	History as HistoryIcon,
 	LayoutDashboard,
 	Lightbulb,
 	LogIn,
@@ -27,8 +29,8 @@ import {
 	X,
 } from "lucide-react";
 
-type Section = "Overview" | "Business" | "Market" | "Customer" | "Brand" | "Visual" | "Research";
-type Artifact = { id: string; type: string; title: string; content: Record<string, unknown>; status: string };
+type Section = "Overview" | "Business" | "Market" | "Customer" | "Brand" | "Visual" | "Research" | "Assets" | "History";
+type Artifact = { id: string; type: string; title: string; content: Record<string, unknown>; status: string; proposalId?: string };
 type Message = { role: "assistant" | "user"; text: string; artifact?: Artifact };
 type CurrentUser = { id: string; email: string };
 type BrandStatePayload = { state: { business?: Record<string, unknown>; market?: Record<string, unknown>; customer?: Record<string, unknown>; brand?: Record<string, unknown>; visual?: Record<string, unknown> } };
@@ -36,6 +38,8 @@ type ConversationSummary = { id: string; title: string | null; updated_at: strin
 type StoredMessage = { role: "assistant" | "user"; content: string };
 type ThemeMode = "light" | "dark";
 type ResearchReport = { id: string; title: string; executive_summary: string; status: string; findings: Array<{ id: string; statement: string; confidence: string; applied: boolean }>; sources?: Array<{ title: string; url: string; publisher?: string | null }> };
+type HistoryEntry = { id: string; action: string; details: Record<string, unknown>; created_at: string };
+type Asset = { id: string; type: string; filename: string; mime_type: string; storage_path: string; metadata: Record<string, unknown>; created_at: string };
 
 function getArtifactOptions(artifact: Artifact | null): Array<Record<string, unknown>> | undefined {
 	if (!artifact) return undefined;
@@ -133,6 +137,8 @@ function Workspace({ onLogout, liveBrandId, user, theme, onToggleTheme }: { onLo
 	const [researchReport, setResearchReport] = useState<ResearchReport | null>(null);
 	const [researchBusy, setResearchBusy] = useState(false);
 	const [proposedFindingIds, setProposedFindingIds] = useState<string[]>([]);
+	const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([]);
+	const [assets, setAssets] = useState<Asset[]>([]);
 	const conversationRef = useRef<HTMLDivElement>(null);
 	const composerInputRef = useRef<HTMLTextAreaElement>(null);
 	const shouldStickToBottom = useRef(true);
@@ -181,9 +187,19 @@ function Workspace({ onLogout, liveBrandId, user, theme, onToggleTheme }: { onLo
 			}));
 		}).catch(() => undefined);
 	}, [liveBrandId]);
+	useEffect(() => {
+		if (!liveBrandId) return;
+		Promise.all([
+			api<HistoryEntry[]>(`/api/brands/${liveBrandId}/history`),
+			api<Asset[]>(`/api/brands/${liveBrandId}/assets`),
+		]).then(([history, loadedAssets]) => {
+			setHistoryEntries(history);
+			setAssets(loadedAssets);
+		}).catch(() => undefined);
+	}, [liveBrandId]);
 	const brandName = liveState.brand.name || "새 Brand";
 	const nav = [
-		["Overview", LayoutDashboard], ["Business", BriefcaseBusiness], ["Market", BarChart3], ["Customer", Users], ["Brand", Sparkles], ["Visual", Palette], ["Research", Search],
+		["Overview", LayoutDashboard], ["Business", BriefcaseBusiness], ["Market", BarChart3], ["Customer", Users], ["Brand", Sparkles], ["Visual", Palette], ["Research", Search], ["Assets", FolderOpen], ["History", HistoryIcon],
 	] as const;
 	const sendMessage = async (event: FormEvent) => {
 		event.preventDefault();
@@ -204,11 +220,12 @@ function Workspace({ onLogout, liveBrandId, user, theme, onToggleTheme }: { onLo
 		setSaving(true);
 		try {
 			if (liveBrandId) {
-				const result = await api<{ message: string; conversation_id: string; artifact: Artifact | null }>("/api/agent/chat", { method: "POST", body: JSON.stringify({ brand_id: liveBrandId, conversation_id: conversationId, message }) });
+				const result = await api<{ message: string; conversation_id: string; artifact: Artifact | null; proposal_id?: string }>("/api/agent/chat", { method: "POST", body: JSON.stringify({ brand_id: liveBrandId, conversation_id: conversationId, message }) });
+				const artifact = result.artifact ? { ...result.artifact, proposalId: result.proposal_id } : null;
 				setConversationId(result.conversation_id);
-				setActiveArtifact(result.artifact);
+				setActiveArtifact(artifact);
 				setConversationSummaries((current) => [{ id: result.conversation_id, title: current.find((item) => item.id === result.conversation_id)?.title ?? message, updated_at: new Date().toISOString() }, ...current.filter((item) => item.id !== result.conversation_id)]);
-				setMessages((current) => [...current, { role: "assistant", text: result.message, artifact: result.artifact ?? undefined }]);
+				setMessages((current) => [...current, { role: "assistant", text: result.message, artifact: artifact ?? undefined }]);
 			} else {
 				await new Promise((resolve) => setTimeout(resolve, 450));
 				setMessages((current) => [...current, { role: "assistant", text: "좋아요. 그 방향을 BrandState에 반영할 수 있도록 제안으로 정리했어요." }]);
@@ -229,8 +246,17 @@ function Workspace({ onLogout, liveBrandId, user, theme, onToggleTheme }: { onLo
 	};
 	const updateArtifactStatus = async (artifact: Artifact, status: "approve" | "reject") => {
 		if (!liveBrandId) return;
-		const endpoint = status === "approve" ? "apply" : "reject";
-		await api(`/api/brands/${liveBrandId}/artifacts/${artifact.id}/${endpoint}`, { method: "POST" });
+		if (artifact.proposalId) {
+			if (status === "approve") {
+				await api(`/api/brands/${liveBrandId}/proposals/${artifact.proposalId}/approve`, { method: "POST" });
+				await api(`/api/brands/${liveBrandId}/proposals/${artifact.proposalId}/apply`, { method: "POST" });
+			} else {
+				await api(`/api/brands/${liveBrandId}/proposals/${artifact.proposalId}/reject`, { method: "POST" });
+			}
+		} else {
+			const endpoint = status === "approve" ? "apply" : "reject";
+			await api(`/api/brands/${liveBrandId}/artifacts/${artifact.id}/${endpoint}`, { method: "POST" });
+		}
 		if (status === "approve") {
 			const payload = await api<BrandStatePayload>(`/api/brands/${liveBrandId}/state`);
 			const state = payload.state;
@@ -246,10 +272,11 @@ function Workspace({ onLogout, liveBrandId, user, theme, onToggleTheme }: { onLo
 		setMessages((current) => [...current, { role: "user", text: `선택: ${direction}` }]);
 		setSaving(true);
 		try {
-			const result = await api<{ message: string; conversation_id: string; artifact: Artifact | null }>("/api/agent/chat", { method: "POST", body: JSON.stringify({ brand_id: liveBrandId, conversation_id: conversationId, message: request }) });
+			const result = await api<{ message: string; conversation_id: string; artifact: Artifact | null; proposal_id?: string }>("/api/agent/chat", { method: "POST", body: JSON.stringify({ brand_id: liveBrandId, conversation_id: conversationId, message: request }) });
+			const artifact = result.artifact ? { ...result.artifact, proposalId: result.proposal_id } : null;
 			setConversationId(result.conversation_id);
-			setActiveArtifact(result.artifact);
-			setMessages((current) => [...current, { role: "assistant", text: result.message, artifact: result.artifact ?? undefined }]);
+			setActiveArtifact(artifact);
+			setMessages((current) => [...current, { role: "assistant", text: result.message, artifact: artifact ?? undefined }]);
 		} catch (caught) {
 			setMessages((current) => [...current, { role: "assistant", text: caught instanceof Error ? caught.message : "선택한 방향을 적용하지 못했어요." }]);
 		} finally {
@@ -287,6 +314,17 @@ function Workspace({ onLogout, liveBrandId, user, theme, onToggleTheme }: { onLo
 		await api(`/api/research/reports/${researchReport.id}/findings/${findingId}/propose`, { method: "POST" });
 		setProposedFindingIds((current) => [...current, findingId]);
 	};
+	const exportBrand = async () => {
+		if (!liveBrandId) return;
+		const payload = await api<Record<string, unknown>>(`/api/brands/${liveBrandId}/export`, { method: "POST", body: JSON.stringify({ format: "json" }) });
+		const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+		const url = URL.createObjectURL(blob);
+		const anchor = document.createElement("a");
+		anchor.href = url;
+		anchor.download = `${brandName.toLowerCase().replaceAll(" ", "-") || "brand"}-export.json`;
+		anchor.click();
+		URL.revokeObjectURL(url);
+	};
 	return (
 		<div className="workspace-shell">
 			<aside className="sidebar">
@@ -298,10 +336,10 @@ function Workspace({ onLogout, liveBrandId, user, theme, onToggleTheme }: { onLo
 				<div className="sidebar-bottom"><div className="saved-state"><CircleCheck size={15} /> All changes saved</div><button className="user-row" onClick={onLogout}><span className="user-avatar">{user.email.slice(0, 1).toUpperCase()}</span><span><strong>{user.email}</strong><small>로그아웃</small></span><ArrowUpRight size={14} /></button></div>
 			</aside>
 			<main className="workspace-main">
-				<header className="topbar"><div><p className="breadcrumb">{brandName} <span>/</span> {section}</p><h2>{section === "Overview" ? "브랜드의 현재 모습" : section}</h2></div><div className="top-actions"><span className="live-pill"><i /> {liveBrandId ? "Connected" : "Demo mode"}</span><ThemeToggle theme={theme} onToggle={onToggleTheme} /><button className="icon-button" title="문서 보기"><FileText size={17} /></button><button className="export-button">Export <ChevronDown size={15} /></button></div></header>
+				<header className="topbar"><div><p className="breadcrumb">{brandName} <span>/</span> {section}</p><h2>{section === "Overview" ? "브랜드의 현재 모습" : section}</h2></div><div className="top-actions"><span className="live-pill"><i /> {liveBrandId ? "Connected" : "Demo mode"}</span><ThemeToggle theme={theme} onToggle={onToggleTheme} /><button className="icon-button" title="문서 보기"><FileText size={17} /></button><button className="export-button" onClick={() => exportBrand().catch(() => undefined)}>Export <ChevronDown size={15} /></button></div></header>
 				<div className="content-scroll">
 					<section className="welcome-row"><div><p className="eyebrow">MONDAY, OCTOBER 01</p><h1>좋은 시작이에요,<br /><em>{user.email.split("@")[0]}.</em></h1></div></section>
-					{section === "Overview" ? <Overview state={liveState} /> : section === "Research" ? <ResearchView query={researchQuery} setQuery={setResearchQuery} report={researchReport} busy={researchBusy} proposedFindingIds={proposedFindingIds} onProposeFinding={proposeResearchFinding} onRun={runDeepResearch} /> : <SectionView section={section} state={liveState} />}
+					{section === "Overview" ? <Overview state={liveState} /> : section === "Research" ? <ResearchView query={researchQuery} setQuery={setResearchQuery} report={researchReport} busy={researchBusy} proposedFindingIds={proposedFindingIds} onProposeFinding={proposeResearchFinding} onRun={runDeepResearch} /> : section === "Assets" ? <AssetsView assets={assets} /> : section === "History" ? <HistoryView entries={historyEntries} /> : <SectionView section={section} state={liveState} />}
 				</div>
 			</main>
 			<aside className="consultant-panel legacy-consultant"><div className="consultant-head"><div><span className="ai-orb"><img src={theme === "dark" ? "/brand/symbol-white.png" : "/brand/symbol-black.png"} alt="" /></span><div><strong>AI Consultant</strong><small>Brand context aware</small></div></div><div className="consultant-actions"><button onClick={() => deleteCurrentChat().catch(() => undefined)} disabled={!conversationId} title="현재 대화 삭제"><Trash2 size={15} /></button><span className="online-dot" /></div></div><div className="conversation" ref={conversationRef} onScroll={(event) => { const target = event.currentTarget; shouldStickToBottom.current = target.scrollHeight - target.scrollTop - target.clientHeight < 80; }}>{messages.length === 0 && <div className="chat-empty"><MessageSquare size={19} /><strong>새 대화를 시작하세요</strong><span>사업, 고객, 시장에 대해 자유롭게 물어보세요.</span></div>}{messages.map((message, index) => <div key={`${message.role}-${index}`} className={`chat-message ${message.role}`}>{message.role === "assistant" && <span className="message-avatar"><img src={theme === "dark" ? "/brand/symbol-white.png" : "/brand/symbol-black.png"} alt="NAME TAG AI" /></span>}<div className="message-body"><span className="message-label">{message.role === "assistant" ? "AI CONSULTANT" : "YOU"}</span><div className="message-content"><ReactMarkdown remarkPlugins={[remarkGfm]}>{message.text}</ReactMarkdown></div>{message.role === "assistant" && index === 0 && <div className="suggestion"><Lightbulb size={15} /><span>Positioning을 더 구체화해볼까요?</span><ArrowUpRight size={14} /></div>}</div></div>)}{saving && <div className="typing"><i /><i /><i /></div>}<div ref={messagesEndRef} /></div><form className="composer" onSubmit={sendMessage}><textarea ref={composerInputRef} value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} rows={1} placeholder="무엇을 만들고 싶나요?" aria-label="AI Consultant 메시지" /><button type="submit" aria-label="메시지 보내기"><Send size={17} /></button></form><div className="composer-hint"><span>⌘/Ctrl Enter</span> to send <span className="hint-right">Context: {section}</span></div></aside>
@@ -323,8 +361,16 @@ function Overview({ state }: { state: typeof demoState }) {
 	</div>;
 }
 
+function AssetsView({ assets }: { assets: Asset[] }) {
+	return <section className="section-view"><div className="section-title"><span className="eyebrow">ASSET LIBRARY</span><h3>{assets.length ? `${assets.length}개의 브랜드 자산` : "아직 저장된 자산이 없어요."}</h3><p>업로드된 파일과 생성된 브랜드 자료를 한 곳에서 확인합니다.</p></div>{assets.length ? <div className="overview-grid">{assets.map((asset) => <article className="metric-card paper" key={asset.id}><div className="card-kicker">{asset.type}</div><h4>{asset.filename}</h4><p>{asset.mime_type}</p><small>{new Date(asset.created_at).toLocaleDateString("ko-KR")}</small></article>)}</div> : <div className="empty-action"><div className="empty-icon"><FolderOpen size={22} /></div><h4>첫 번째 브랜드 자산을 저장해보세요.</h4><p>AI Consultant가 만든 결과물이나 브랜드 파일이 이곳에 쌓입니다.</p></div>}</section>;
+}
+
+function HistoryView({ entries }: { entries: HistoryEntry[] }) {
+	return <section className="section-view"><div className="section-title"><span className="eyebrow">BRANDSTATE HISTORY</span><h3>{entries.length ? "브랜드가 이렇게 발전했어요." : "아직 변경 기록이 없어요."}</h3><p>승인된 제안과 Snapshot 복구 기록을 시간순으로 확인합니다.</p></div>{entries.length ? <div className="history-list">{entries.map((entry) => <article className="history-item" key={entry.id}><div><span className="card-kicker">{entry.action.replaceAll("_", " ")}</span><strong>{String(entry.details?.to_version ?? entry.details?.snapshot_version ?? "변경 기록")}</strong></div><time>{new Date(entry.created_at).toLocaleString("ko-KR")}</time></article>)}</div> : <div className="empty-action"><div className="empty-icon"><HistoryIcon size={22} /></div><h4>첫 번째 제안을 승인하면 기록이 시작됩니다.</h4><p>BrandState에 적용된 변화는 모두 이곳에서 추적할 수 있어요.</p></div>}</section>;
+}
+
 function SectionView({ section, state }: { section: Section; state: typeof demoState }) {
-	const values: Record<Section, [string, string, string]> = { Overview: ["", "", ""], Business: ["Problem / Solution", state.business.problem, state.business.service], Market: ["Market direction", state.market.trend, state.market.competitors], Customer: ["Primary audience", state.customer.target, state.customer.need], Brand: ["Positioning", state.brand.positioning, state.brand.tone], Visual: ["Visual direction", state.visual.mood, state.visual.palette.join("  ")], Research: ["Research workspace", "아직 저장된 Deep Research가 없습니다.", "AI Consultant에게 시장 조사를 요청해보세요." ] };
+	const values: Record<Section, [string, string, string]> = { Overview: ["", "", ""], Business: ["Problem / Solution", state.business.problem, state.business.service], Market: ["Market direction", state.market.trend, state.market.competitors], Customer: ["Primary audience", state.customer.target, state.customer.need], Brand: ["Positioning", state.brand.positioning, state.brand.tone], Visual: ["Visual direction", state.visual.mood, state.visual.palette.join("  ")], Research: ["Research workspace", "아직 저장된 Deep Research가 없습니다.", "AI Consultant에게 시장 조사를 요청해보세요."], Assets: ["Asset library", "", ""], History: ["BrandState history", "", ""] };
 	const [label, title, detail] = values[section];
 	return <section className="section-view"><div className="section-title"><span className="eyebrow">{label}</span><h3>{title}</h3><p>{detail}</p></div><div className="empty-action"><div className="empty-icon"><BookOpen size={22} /></div><h4>{section}를 더 선명하게 만들까요?</h4><p>AI Consultant가 현재 Brand context를 읽고 다음 제안을 준비할 수 있어요.</p><button className="dark-button"><MessageCircle size={15} /> Consultant에게 요청</button></div></section>;
 }

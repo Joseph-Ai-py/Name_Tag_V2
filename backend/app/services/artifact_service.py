@@ -2,11 +2,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.artifact import Artifact
-from app.models.history import History
-from app.models.snapshot import Snapshot
-from app.services.brand_state_service import get_brand_state
-from app.services.mutation_service import ALLOWED_PATHS, apply_changes
-from copy import deepcopy
+from app.services.mutation_service import ALLOWED_PATHS
+from app.services.proposal_service import apply_proposal, create_proposal
 
 
 def create_artifact(db: Session, brand_id: str, user_id: str, artifact_type: str, title: str, content: dict) -> Artifact:
@@ -62,18 +59,20 @@ def artifact_brand_changes(artifact: Artifact) -> dict[str, object]:
 def apply_artifact(db: Session, artifact: Artifact, user_id: str) -> Artifact:
 	if artifact.status not in {"draft", "approved"}:
 		raise ValueError("Only draft or approved artifacts can be applied")
-	brand_state = get_brand_state(db, artifact.brand_id)
-	if brand_state is None:
-		raise ValueError("Brand state not found")
 	changes = artifact_brand_changes(artifact)
 	if not changes:
 		raise ValueError("Artifact does not contain applicable BrandState changes")
-	previous_state = deepcopy(brand_state.state)
-	_, next_state = apply_changes(brand_state, changes)
-	db.add(Snapshot(brand_id=artifact.brand_id, version=brand_state.version, state=previous_state, created_by=user_id))
-	brand_state.state = next_state
-	brand_state.version += 1
-	db.add(History(brand_id=artifact.brand_id, user_id=user_id, action="artifact_applied", details={"artifact_id": artifact.id, "changes": changes, "version": brand_state.version}))
+	proposal = create_proposal(
+		db=db,
+		brand_id=artifact.brand_id,
+		user_id=user_id,
+		title=artifact.title,
+		summary=f"Artifact {artifact.id} approved for BrandState application",
+		changes=changes,
+	)
+	proposal.status = "approved"
+	db.commit()
+	apply_proposal(db, proposal, user_id)
 	artifact.status = "applied"
 	db.commit()
 	db.refresh(artifact)
