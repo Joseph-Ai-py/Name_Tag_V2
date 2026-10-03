@@ -7,7 +7,14 @@ from app.services.brand_state_service import get_brand_state
 from app.services.document_service import create_document, get_block, get_document, update_block
 from app.services.export_service import build_json_export
 from app.services.proposal_service import apply_proposal, create_proposal, get_proposal
-from app.services.research_service import create_deep_research_job, create_research_plan, get_research_job
+from app.services.research_service import (
+    build_research_proposal_changes,
+    create_deep_research_job,
+    create_research_plan,
+    get_research_job,
+    get_report_findings,
+    get_research_report,
+)
 from app.tools.base import ToolContext
 from app.tools.registry import tool_registry
 
@@ -25,6 +32,7 @@ class ToolExecutor:
             "apply_brand_change": self._apply_brand_change,
             "get_research_job": self._get_research_job,
             "create_research_job": self._create_research_job,
+            "apply_research_finding": self._apply_research_finding,
             "create_document": self._create_document,
             "update_block": self._update_block,
             "save_asset": self._save_asset,
@@ -73,6 +81,26 @@ class ToolExecutor:
     @staticmethod
     def _create_research_job(context: ToolContext, query: str, plan: dict | None = None) -> Any:
         return create_deep_research_job(context.db, context.brand_id, context.user_id, query, plan or create_research_plan(query))
+
+    @staticmethod
+    def _apply_research_finding(context: ToolContext, report_id: str, finding_id: str) -> Any:
+        report = get_research_report(context.db, report_id)
+        if report is None or report.brand_id != context.brand_id:
+            raise ValueError("Research report not found")
+        findings = get_report_findings(context.db, report_id)
+        finding = next((item for item in findings if item.id == finding_id), None)
+        if finding is None:
+            raise ValueError("Research finding not found")
+        changes = build_research_proposal_changes(finding)
+        proposal = create_proposal(
+            db=context.db,
+            brand_id=context.brand_id,
+            user_id=context.user_id,
+            title="Research Finding 적용 제안",
+            summary=finding.statement,
+            changes=changes,
+        )
+        return proposal
 
     @staticmethod
     def _create_document(context: ToolContext, title: str) -> Any:

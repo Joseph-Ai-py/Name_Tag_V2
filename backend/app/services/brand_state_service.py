@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.brand_state import BrandState
+from app.services.mutation_service import validate_brand_state_change_paths
 
 
 def create_initial_brand_state(
@@ -110,6 +111,7 @@ def update_brand_state(
     ):
         raise ValueError("Brand state version conflict")
 
+    validate_brand_state_change_paths(changes)
     brand_state.state = merge_state(brand_state.state, changes)
     brand_state.version += 1
     db.commit()

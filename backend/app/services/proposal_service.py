@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.models.proposal import Proposal
 from app.models.history import History
 from app.models.snapshot import Snapshot
-from app.services.mutation_service import apply_changes
+from app.services.mutation_service import apply_changes, validate_brand_state_change_paths
 from app.services.brand_state_service import get_brand_state
 
 from copy import deepcopy
@@ -18,6 +18,8 @@ def create_proposal(
     summary: str,
     changes: dict,
 ) -> Proposal:
+    validate_brand_state_change_paths(changes)
+
     proposal = Proposal(
         brand_id=brand_id,
         created_by=user_id,

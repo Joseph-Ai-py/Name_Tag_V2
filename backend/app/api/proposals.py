@@ -48,14 +48,20 @@ def create_proposal_endpoint(
     
     require_editor_role(membership.role)
 
-    proposal = create_proposal(
-        db=db,
-        brand_id=brand_id,
-        user_id=current_user.id,
-        title=payload.title,
-        summary=payload.summary,
-        changes=payload.changes,
-    )
+    try:
+        proposal = create_proposal(
+            db=db,
+            brand_id=brand_id,
+            user_id=current_user.id,
+            title=payload.title,
+            summary=payload.summary,
+            changes=payload.changes,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
 
     return ProposalResponse(
         id=proposal.id,

@@ -72,6 +72,22 @@ def test_user_cannot_access_or_delete_another_users_brand(client: TestClient) ->
     assert client.delete(f"/api/brands/{brand_id}").status_code == 404
 
 
+def test_brand_state_patch_rejects_unsupported_fields(client: TestClient) -> None:
+    signup(client, "owner@example.com")
+    brand_id = create_brand(client)
+
+    response = client.patch(
+        f"/api/brands/{brand_id}/state",
+        json={
+            "state": {"brand": {"not_a_real_field": "bad-value"}},
+            "expected_version": 1,
+        },
+    )
+
+    assert response.status_code == 400, response.text
+    assert "Unsupported BrandState path" in response.json()["detail"]
+
+
 def test_owner_can_delete_brand(client: TestClient) -> None:
     signup(client, "owner@example.com")
     brand_id = create_brand(client)

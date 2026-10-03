@@ -7,6 +7,7 @@ from app.agent.router import classify_message
 from app.models.user import User
 from app.skills.executor import SkillExecutor
 from app.services.artifact_service import create_artifact
+from app.services.brand_service import get_brand_membership
 from app.services.brand_state_service import get_brand_state
 from app.services.conversation_service import (
     create_conversation,
@@ -15,6 +16,23 @@ from app.services.conversation_service import (
     get_messages,
 )
 from app.services.usage_service import record_usage, start_usage
+from app.tools.base import ToolContext
+from app.tools.executor import ToolExecutor
+
+MAX_LLM_CALLS = 3
+MAX_TOOL_CALLS = 5
+MAX_ITERATIONS = 2
+
+
+def _required_tools_for_route(route: str) -> list[str]:
+    route_tools = {
+        "business": ["get_brand_context"],
+        "customer": ["get_brand_context"],
+        "brand": ["get_brand_state", "get_brand_context"],
+        "visual": ["get_brand_context"],
+        "research": ["get_brand_context"],
+    }
+    return route_tools.get(route, [])
 
 
 def run_agent(
@@ -25,6 +43,10 @@ def run_agent(
     message: str,
 ) -> dict[str, Any]:
     started_at = start_usage()
+    membership = get_brand_membership(db, brand_id, current_user.id)
+    if membership is None:
+        raise ValueError("Brand not found")
+
     brand_state = get_brand_state(db, brand_id)
     context = build_context(brand_state.state if brand_state else None)
 
@@ -46,7 +68,27 @@ def run_agent(
     ]
     context["conversation_history"] = history
     create_message(db, conversation, "user", message, None)
+
     route = classify_message(message)
+    tool_context = ToolContext(
+        db=db,
+        user_id=current_user.id,
+        brand_id=brand_id,
+        role=membership.role,
+    )
+    executed_tools: list[str] = []
+    tool_results: dict[str, Any] = {}
+    for tool_name in _required_tools_for_route(route):
+        if len(executed_tools) >= MAX_TOOL_CALLS:
+            raise RuntimeError("Agent tool call limit exceeded")
+        tool_results[tool_name] = ToolExecutor().execute(tool_name, tool_context, task=route)
+        executed_tools.append(tool_name)
+    context["tool_results"] = tool_results
+
+    llm_calls = 1
+    if llm_calls > MAX_LLM_CALLS:
+        raise RuntimeError("Agent LLM call limit exceeded")
+
     llm_response = SkillExecutor().execute(
         skill_name=route,
         message=message,

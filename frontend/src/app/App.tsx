@@ -35,7 +35,7 @@ type BrandStatePayload = { state: { business?: Record<string, unknown>; market?:
 type ConversationSummary = { id: string; title: string | null; updated_at: string };
 type StoredMessage = { role: "assistant" | "user"; content: string };
 type ThemeMode = "light" | "dark";
-type ResearchReport = { title: string; executive_summary: string; status: string; findings: Array<{ statement: string; confidence: string }>; sources?: Array<{ title: string; url: string; publisher?: string | null }> };
+type ResearchReport = { id: string; title: string; executive_summary: string; status: string; findings: Array<{ id: string; statement: string; confidence: string; applied: boolean }>; sources?: Array<{ title: string; url: string; publisher?: string | null }> };
 
 function getArtifactOptions(artifact: Artifact | null): Array<Record<string, unknown>> | undefined {
 	if (!artifact) return undefined;
@@ -132,6 +132,7 @@ function Workspace({ onLogout, liveBrandId, user, theme, onToggleTheme }: { onLo
 	const [researchQuery, setResearchQuery] = useState("");
 	const [researchReport, setResearchReport] = useState<ResearchReport | null>(null);
 	const [researchBusy, setResearchBusy] = useState(false);
+	const [proposedFindingIds, setProposedFindingIds] = useState<string[]>([]);
 	const conversationRef = useRef<HTMLDivElement>(null);
 	const composerInputRef = useRef<HTMLTextAreaElement>(null);
 	const shouldStickToBottom = useRef(true);
@@ -274,12 +275,17 @@ function Workspace({ onLogout, liveBrandId, user, theme, onToggleTheme }: { onLo
 			const report = await api<ResearchReport>(`/api/research/jobs/${job.id}/report`);
 			setResearchReport(report);
 		} catch (caught) {
-			setResearchReport({ title: "Research failed", executive_summary: caught instanceof Error ? caught.message : "Deep Research를 실행하지 못했어요.", status: "failed", findings: [] });
+			setResearchReport({ id: "failed", title: "Research failed", executive_summary: caught instanceof Error ? caught.message : "Deep Research를 실행하지 못했어요.", status: "failed", findings: [] });
 		} finally { setResearchBusy(false); }
 	};
 	const runDeepResearch = async (event: FormEvent) => {
 		event.preventDefault();
 		await runDeepResearchQuery(researchQuery);
+	};
+	const proposeResearchFinding = async (findingId: string) => {
+		if (!liveBrandId || !researchReport || proposedFindingIds.includes(findingId)) return;
+		await api(`/api/research/reports/${researchReport.id}/findings/${findingId}/propose`, { method: "POST" });
+		setProposedFindingIds((current) => [...current, findingId]);
 	};
 	return (
 		<div className="workspace-shell">
@@ -295,7 +301,7 @@ function Workspace({ onLogout, liveBrandId, user, theme, onToggleTheme }: { onLo
 				<header className="topbar"><div><p className="breadcrumb">{brandName} <span>/</span> {section}</p><h2>{section === "Overview" ? "브랜드의 현재 모습" : section}</h2></div><div className="top-actions"><span className="live-pill"><i /> {liveBrandId ? "Connected" : "Demo mode"}</span><ThemeToggle theme={theme} onToggle={onToggleTheme} /><button className="icon-button" title="문서 보기"><FileText size={17} /></button><button className="export-button">Export <ChevronDown size={15} /></button></div></header>
 				<div className="content-scroll">
 					<section className="welcome-row"><div><p className="eyebrow">MONDAY, OCTOBER 01</p><h1>좋은 시작이에요,<br /><em>{user.email.split("@")[0]}.</em></h1></div></section>
-					{section === "Overview" ? <Overview state={liveState} /> : section === "Research" ? <ResearchView query={researchQuery} setQuery={setResearchQuery} report={researchReport} busy={researchBusy} onRun={runDeepResearch} /> : <SectionView section={section} state={liveState} />}
+					{section === "Overview" ? <Overview state={liveState} /> : section === "Research" ? <ResearchView query={researchQuery} setQuery={setResearchQuery} report={researchReport} busy={researchBusy} proposedFindingIds={proposedFindingIds} onProposeFinding={proposeResearchFinding} onRun={runDeepResearch} /> : <SectionView section={section} state={liveState} />}
 				</div>
 			</main>
 			<aside className="consultant-panel legacy-consultant"><div className="consultant-head"><div><span className="ai-orb"><img src={theme === "dark" ? "/brand/symbol-white.png" : "/brand/symbol-black.png"} alt="" /></span><div><strong>AI Consultant</strong><small>Brand context aware</small></div></div><div className="consultant-actions"><button onClick={() => deleteCurrentChat().catch(() => undefined)} disabled={!conversationId} title="현재 대화 삭제"><Trash2 size={15} /></button><span className="online-dot" /></div></div><div className="conversation" ref={conversationRef} onScroll={(event) => { const target = event.currentTarget; shouldStickToBottom.current = target.scrollHeight - target.scrollTop - target.clientHeight < 80; }}>{messages.length === 0 && <div className="chat-empty"><MessageSquare size={19} /><strong>새 대화를 시작하세요</strong><span>사업, 고객, 시장에 대해 자유롭게 물어보세요.</span></div>}{messages.map((message, index) => <div key={`${message.role}-${index}`} className={`chat-message ${message.role}`}>{message.role === "assistant" && <span className="message-avatar"><img src={theme === "dark" ? "/brand/symbol-white.png" : "/brand/symbol-black.png"} alt="NAME TAG AI" /></span>}<div className="message-body"><span className="message-label">{message.role === "assistant" ? "AI CONSULTANT" : "YOU"}</span><div className="message-content"><ReactMarkdown remarkPlugins={[remarkGfm]}>{message.text}</ReactMarkdown></div>{message.role === "assistant" && index === 0 && <div className="suggestion"><Lightbulb size={15} /><span>Positioning을 더 구체화해볼까요?</span><ArrowUpRight size={14} /></div>}</div></div>)}{saving && <div className="typing"><i /><i /><i /></div>}<div ref={messagesEndRef} /></div><form className="composer" onSubmit={sendMessage}><textarea ref={composerInputRef} value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} rows={1} placeholder="무엇을 만들고 싶나요?" aria-label="AI Consultant 메시지" /><button type="submit" aria-label="메시지 보내기"><Send size={17} /></button></form><div className="composer-hint"><span>⌘/Ctrl Enter</span> to send <span className="hint-right">Context: {section}</span></div></aside>
@@ -323,8 +329,8 @@ function SectionView({ section, state }: { section: Section; state: typeof demoS
 	return <section className="section-view"><div className="section-title"><span className="eyebrow">{label}</span><h3>{title}</h3><p>{detail}</p></div><div className="empty-action"><div className="empty-icon"><BookOpen size={22} /></div><h4>{section}를 더 선명하게 만들까요?</h4><p>AI Consultant가 현재 Brand context를 읽고 다음 제안을 준비할 수 있어요.</p><button className="dark-button"><MessageCircle size={15} /> Consultant에게 요청</button></div></section>;
 }
 
-function ResearchView({ query, setQuery, report, busy, onRun }: { query: string; setQuery: (value: string) => void; report: ResearchReport | null; busy: boolean; onRun: (event: FormEvent) => void }) {
-	return <section className="research-view"><div className="section-title"><span className="eyebrow">DEEP RESEARCH</span><h3>근거가 필요한 질문을<br />깊게 조사하세요.</h3><p>시장, 고객, 경쟁사에 대한 복합 질문을 Research Report와 Finding으로 정리합니다.</p><form className="research-form" onSubmit={onRun}><textarea value={query} onChange={(event) => setQuery(event.target.value)} placeholder="예: 국내 AI 브랜드 워크스페이스 시장의 경쟁사와 진입 기회를 분석해줘" rows={3} /><button className="dark-button" type="submit" disabled={busy || !query.trim()}>{busy ? "Research 실행 중..." : "Deep Research 시작"}</button></form></div>{report ? <article className="research-report"><div className="card-kicker">{report.status.toUpperCase()}</div><h4>{report.title}</h4><div className="research-report-body"><ReactMarkdown remarkPlugins={[remarkGfm]}>{report.executive_summary}</ReactMarkdown></div>{report.sources && report.sources.length > 0 && <div className="research-sources"><span className="card-kicker">SOURCES · {report.sources.length}</span>{report.sources.map((source) => <a key={source.url} href={source.url} target="_blank" rel="noreferrer">{source.title}<small>{source.publisher || source.url}</small></a>)}</div>}<div className="research-findings">{report.findings.map((finding, index) => <div key={index}><span>FINDING {index + 1}</span><strong>{finding.statement}</strong><small>{finding.confidence}</small></div>)}</div></article> : <div className="research-empty"><Search size={22} /><strong>아직 Research Report가 없습니다.</strong><span>왼쪽 질문창에 조사하고 싶은 내용을 입력해보세요.</span></div>}</section>;
+function ResearchView({ query, setQuery, report, busy, proposedFindingIds, onProposeFinding, onRun }: { query: string; setQuery: (value: string) => void; report: ResearchReport | null; busy: boolean; proposedFindingIds: string[]; onProposeFinding: (findingId: string) => Promise<void>; onRun: (event: FormEvent) => void }) {
+	return <section className="research-view"><div className="section-title"><span className="eyebrow">DEEP RESEARCH</span><h3>근거가 필요한 질문을<br />깊게 조사하세요.</h3><p>시장, 고객, 경쟁사에 대한 복합 질문을 Research Report와 Finding으로 정리합니다.</p><form className="research-form" onSubmit={onRun}><textarea value={query} onChange={(event) => setQuery(event.target.value)} placeholder="예: 국내 AI 브랜드 워크스페이스 시장의 경쟁사와 진입 기회를 분석해줘" rows={3} /><button className="dark-button" type="submit" disabled={busy || !query.trim()}>{busy ? "Research 실행 중..." : "Deep Research 시작"}</button></form></div>{report ? <article className="research-report"><div className="card-kicker">{report.status.toUpperCase()}</div><h4>{report.title}</h4><div className="research-report-body"><ReactMarkdown remarkPlugins={[remarkGfm]}>{report.executive_summary}</ReactMarkdown></div>{report.sources && report.sources.length > 0 && <div className="research-sources"><span className="card-kicker">SOURCES · {report.sources.length}</span>{report.sources.map((source) => <a key={source.url} href={source.url} target="_blank" rel="noreferrer">{source.title}<small>{source.publisher || source.url}</small></a>)}</div>}<div className="research-findings">{report.findings.map((finding, index) => { const proposed = finding.applied || proposedFindingIds.includes(finding.id); return <div key={finding.id}><span>FINDING {index + 1}</span><strong>{finding.statement}</strong><small>{finding.confidence}</small><button className="dark-button" type="button" disabled={proposed} onClick={() => onProposeFinding(finding.id)}>{proposed ? "제안 생성됨" : "BrandState 제안 만들기"}</button></div>; })}</div></article> : <div className="research-empty"><Search size={22} /><strong>아직 Research Report가 없습니다.</strong><span>왼쪽 질문창에 조사하고 싶은 내용을 입력해보세요.</span></div>}</section>;
 }
 
 export default function App() {

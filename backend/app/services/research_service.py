@@ -13,6 +13,41 @@ from app.db.session import SessionLocal
 from app.research.providers.gemini_deep_research import GeminiDeepResearchProvider
 from app.research.providers.gemini_deep_research import DeepResearchResult
 from app.config import get_settings
+from app.services.mutation_service import ALLOWED_PATHS
+
+
+def build_research_proposal_changes(finding: ResearchFinding | dict) -> dict:
+	field_aliases = {
+		"brand": "brand.positioning",
+		"positioning": "brand.positioning",
+		"target": "customer.target",
+		"customer": "customer.target",
+		"market": "market.competitors",
+		"competitors": "market.competitors",
+		"service": "business.service",
+		"business": "business.service",
+		"price": "business.pricing",
+		"pricing": "business.pricing",
+		"visual": "visual.mood",
+		"mood": "visual.mood",
+	}
+
+	if isinstance(finding, dict):
+		summary = finding.get("statement") or "Research finding"
+		suggested_fields = finding.get("suggested_fields") or []
+	else:
+		summary = finding.statement
+		suggested_fields = finding.suggested_fields or []
+
+	changes: dict[str, dict[str, str]] = {}
+	for field in suggested_fields:
+		candidate = str(field).strip().lower()
+		path = field_aliases.get(candidate, candidate)
+		if path in ALLOWED_PATHS:
+			changes[path] = {"summary": summary}
+	if not changes:
+		changes["brand.positioning"] = {"summary": summary}
+	return changes
 
 
 def create_research_plan(query: str) -> dict:

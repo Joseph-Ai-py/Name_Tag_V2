@@ -90,7 +90,8 @@ def update_brand_state_endpoint(
             expected_version=payload.expected_version,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        status_code = 409 if str(exc) == "Brand state version conflict" else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
 
     return BrandStateResponse(
         id=brand_state.id,

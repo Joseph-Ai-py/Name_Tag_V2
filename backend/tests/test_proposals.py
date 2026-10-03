@@ -46,3 +46,20 @@ def test_proposal_requires_approval_and_creates_history(
     history = client.get(f"/api/brands/{brand_id}/history")
     assert history.status_code == 200, history.text
     assert history.json()[0]["action"] == "proposal_applied"
+
+
+def test_proposal_rejects_unsupported_change_paths(client: TestClient) -> None:
+    signup(client, "owner@example.com")
+    brand_id = create_brand(client)
+
+    response = client.post(
+        f"/api/brands/{brand_id}/proposals",
+        json={
+            "title": "Invalid change",
+            "summary": "This should be rejected",
+            "changes": {"brand.unknown_field": "bad-value"},
+        },
+    )
+
+    assert response.status_code == 400, response.text
+    assert "Unsupported BrandState path" in response.json()["detail"]

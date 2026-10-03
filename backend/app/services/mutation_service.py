@@ -1,4 +1,5 @@
 from copy import deepcopy
+from typing import Any
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -48,6 +49,31 @@ ALLOWED_PATHS = {
 }
 
 
+def flatten_state_paths(prefix: str, value: Any) -> list[str]:
+    if not isinstance(value, dict):
+        return [prefix] if prefix else []
+
+    paths: list[str] = []
+    for key, nested in value.items():
+        path = f"{prefix}.{key}" if prefix else key
+        if isinstance(nested, dict):
+            paths.extend(flatten_state_paths(path, nested))
+        else:
+            paths.append(path)
+    return paths
+
+
+def validate_brand_state_change_paths(changes: Any) -> None:
+    if not isinstance(changes, dict):
+        raise ValueError("BrandState changes must be an object")
+    if not changes:
+        raise ValueError("BrandState changes cannot be empty")
+
+    for path in flatten_state_paths("", changes):
+        if path not in ALLOWED_PATHS:
+            raise ValueError(f"Unsupported BrandState path: {path}")
+
+
 def apply_changes(
     brand_state: BrandState,
     changes: dict,
@@ -55,14 +81,16 @@ def apply_changes(
     current_state = deepcopy(brand_state.state)
     next_state = deepcopy(current_state)
 
+    validate_brand_state_change_paths(changes)
+
     for path, value in changes.items():
-        if path not in ALLOWED_PATHS:
+        if "." in path:
+            section, field = path.split(".", 1)
+        else:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Unsupported BrandState path: {path}",
             )
-
-        section, field = path.split(".", 1)
 
         if section not in next_state:
             raise HTTPException(

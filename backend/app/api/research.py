@@ -30,9 +30,41 @@ from app.services.research_service import (
 	run_deep_research_background,
 	update_research_job_status,
 )
+from app.services.mutation_service import ALLOWED_PATHS
 from app.services.proposal_service import create_proposal, get_proposal
 
 router = APIRouter(prefix="/api/research", tags=["research"])
+
+
+def build_research_proposal_changes(finding) -> dict[str, str]:
+	field_aliases = {
+		"brand": "brand.positioning",
+		"positioning": "brand.positioning",
+		"target": "customer.target",
+		"customer": "customer.target",
+		"market": "market.competitors",
+		"competitors": "market.competitors",
+		"service": "business.service",
+		"business": "business.service",
+		"price": "business.pricing",
+		"pricing": "business.pricing",
+		"visual": "visual.mood",
+		"mood": "visual.mood",
+	}
+
+	changes: dict[str, str] = {}
+	for field in finding.suggested_fields or []:
+		candidate = str(field).strip().lower()
+		path = field_aliases.get(candidate, candidate)
+		if path in ALLOWED_PATHS:
+			changes[path] = finding.statement
+		elif candidate in ALLOWED_PATHS:
+			changes[candidate] = finding.statement
+
+	if not changes:
+		changes["brand.positioning"] = finding.statement
+
+	return changes
 
 
 def job_response(job) -> ResearchJobResponse:
@@ -206,11 +238,7 @@ def propose_finding_application(
 		user_id=current_user.id,
 		title="Research Finding 적용 제안",
 		summary=finding.statement,
-		changes={
-			"evidence": finding.evidence,
-			"source_ids": finding.source_ids,
-			"suggested_fields": finding.suggested_fields,
-		},
+		changes=build_research_proposal_changes(finding),
 	)
 	return FindingProposalResponse(
 		proposal_id=proposal.id,
