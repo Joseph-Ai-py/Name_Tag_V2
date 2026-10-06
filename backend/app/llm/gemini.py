@@ -3,7 +3,8 @@ import json
 
 from google.genai import types
 
-from app.llm.schemas import LLMResponse
+from app.agent.state import AgentDecision
+from app.llm.schemas import LLMPlanResponse, LLMResponse
 
 
 class GeminiGateway:
@@ -46,6 +47,40 @@ class GeminiGateway:
 		)
 		text = response.text or "요청을 처리했어요. 다음 작업을 정리해볼게요."
 		return self._parse_response(text)
+
+	def plan_agent(
+		self,
+		goal: str,
+		context: dict[str, Any],
+		tools: list[dict[str, Any]],
+		skills: list[dict[str, Any]],
+		evaluation: dict[str, Any],
+	) -> AgentDecision:
+		prompt = (
+			"You are the planning engine of NAME TAG. Return only valid JSON. "
+			"Choose exactly one action: tool_call, final, ask_user, propose, replan, wait_for_approval. "
+			"Never invent user_id, brand_id, role, database access, or approval. "
+			"Never apply a BrandState change; create a proposal and wait for approval.\n"
+			f"Goal: {goal}\nContext: {context}\nEvaluation: {evaluation}\n"
+			f"Available tools: {tools}\nAvailable skills: {skills}"
+		)
+		response = self.client.models.generate_content(
+			model=self.model,
+			contents=prompt,
+			config=types.GenerateContentConfig(
+				response_mime_type="application/json",
+				system_instruction="NAME TAG planner must make one safe next-action decision.",
+			),
+		)
+		try:
+			payload = json.loads(response.text or "")
+			return LLMPlanResponse.model_validate(payload).to_decision()
+		except (json.JSONDecodeError, TypeError, ValueError) as exc:
+			return AgentDecision(
+				action="ask_user",
+				reason=f"Planner 응답을 검증할 수 없습니다: {exc}",
+				message="요청을 안전하게 판단하지 못했습니다. 필요한 작업을 조금 더 구체적으로 알려주세요.",
+			)
 
 	def _parse_response(self, text: str) -> LLMResponse:
 		try:

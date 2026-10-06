@@ -108,7 +108,7 @@ def test_agent_brand_request_creates_pending_proposal_without_mutation(client: T
         assert run is not None
         assert run.status == "completed"
         calls = db.query(ToolCall).filter(ToolCall.agent_run_id == run.id).all()
-        assert [call.tool_name for call in calls] == ["get_brand_state", "get_brand_context", "run_employee_meeting"]
+        assert [call.tool_name for call in calls] == ["get_brand_state", "get_brand_context"]
         assert all(call.status == "completed" for call in calls)
 
         runs = client.get(f"/api/agent/brands/{brand_id}/runs")
@@ -117,7 +117,6 @@ def test_agent_brand_request_creates_pending_proposal_without_mutation(client: T
         assert [call["tool_name"] for call in runs.json()[0]["tool_calls"]] == [
             "get_brand_state",
             "get_brand_context",
-            "run_employee_meeting",
         ]
     finally:
         db.close()
@@ -180,10 +179,10 @@ def test_agent_complex_positioning_request_adapts_across_research_and_meeting(cl
         "get_brand_state",
         "get_brand_context",
         "create_research_job",
-        "get_research_job",
-        "run_employee_meeting",
     ]
-    assert body["proposal_id"]
+    assert body["execution"]["status"] == "waiting_for_approval"
+    assert body["proposal_id"] is None
+    assert body["execution"]["pending_resource_id"]
 
     state = client.get(f"/api/brands/{brand_id}/state").json()
     assert state["state"]["brand"]["positioning"] is None

@@ -1,17 +1,43 @@
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 AgentMode = Literal["simple", "adaptive", "complex"]
 
 
 class AgentDecision(BaseModel):
-    action: Literal["tool_call", "final", "replan"]
+    action: Literal[
+        "tool_call",
+        "final",
+        "ask_user",
+        "propose",
+        "replan",
+        "wait_for_approval",
+    ]
     reason: str = Field(min_length=1, max_length=500)
     tool_name: str | None = None
     arguments: dict[str, Any] = Field(default_factory=dict)
+    message: str | None = None
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    skill_name: str | None = None
+    proposal_id: str | None = None
+    pending_resource_id: str | None = None
+
+    @model_validator(mode="after")
+    def validate_action_payload(self) -> "AgentDecision":
+        if self.action == "tool_call" and not self.tool_name:
+            raise ValueError("tool_call requires tool_name")
+        if self.action in {"ask_user", "wait_for_approval"} and not self.message:
+            raise ValueError(f"{self.action} requires message")
+        if self.action == "wait_for_approval" and not (self.proposal_id or self.pending_resource_id):
+            raise ValueError("wait_for_approval requires a pending resource")
+        if self.action == "propose" and not self.skill_name:
+            raise ValueError("propose requires skill_name")
+        if self.action != "tool_call" and self.tool_name is not None:
+            raise ValueError("tool_name is only valid for tool_call")
+        return self
 
 
 class AgentBudget(BaseModel):
@@ -32,6 +58,11 @@ class AgentExecutionState:
     pending_steps: list[str] = field(default_factory=list)
     tool_results: dict[str, Any] = field(default_factory=dict)
     evaluations: list[dict[str, Any]] = field(default_factory=list)
+    observations: list[dict[str, Any]] = field(default_factory=list)
+    failed_tools: list[str] = field(default_factory=list)
+    waiting_for: str | None = None
+    pending_resource_id: str | None = None
+    base_state_version: int | None = None
     status: str = "running"
 
     def as_dict(self) -> dict[str, Any]:
@@ -46,5 +77,10 @@ class AgentExecutionState:
             "pending_steps": self.pending_steps,
             "tool_results": self.tool_results,
             "evaluations": self.evaluations,
+            "observations": self.observations,
+            "failed_tools": self.failed_tools,
+            "waiting_for": self.waiting_for,
+            "pending_resource_id": self.pending_resource_id,
+            "base_state_version": self.base_state_version,
             "status": self.status,
         }

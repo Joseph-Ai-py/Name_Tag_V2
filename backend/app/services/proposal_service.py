@@ -17,6 +17,7 @@ def create_proposal(
     title: str,
     summary: str,
     changes: dict,
+    base_state_version: int | None = None,
 ) -> Proposal:
     validate_brand_state_change_paths(changes)
 
@@ -26,6 +27,7 @@ def create_proposal(
         title=title.strip(),
         summary=summary.strip(),
         changes=changes,
+        base_state_version=base_state_version,
         status="pending",
     )
 
@@ -84,6 +86,12 @@ def apply_proposal(
         raise ValueError(
             "Brand state not found"
         )
+
+    if (
+        proposal.base_state_version is not None
+        and brand_state.version != proposal.base_state_version
+    ):
+        raise ValueError("Brand state version conflict")
 
     previous_state = deepcopy(brand_state.state)
     previous_version = brand_state.version

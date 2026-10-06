@@ -63,3 +63,33 @@ def test_proposal_rejects_unsupported_change_paths(client: TestClient) -> None:
 
     assert response.status_code == 400, response.text
     assert "Unsupported BrandState path" in response.json()["detail"]
+
+
+def test_agent_proposal_rejects_stale_brand_state_version(client: TestClient) -> None:
+    signup(client, "stale-proposal@example.com")
+    brand_id = create_brand(client)
+
+    agent_response = client.post(
+        "/api/agent/chat",
+        json={"brand_id": brand_id, "message": "우리 브랜드의 포지셔닝을 개선해줘"},
+    )
+    assert agent_response.status_code == 200, agent_response.text
+    stale_proposal_id = agent_response.json()["proposal_id"]
+
+    competing = client.post(
+        f"/api/brands/{brand_id}/proposals",
+        json={
+            "title": "Competing change",
+            "summary": "Advance the state first",
+            "changes": {"customer.target": "대학생 창업팀"},
+        },
+    )
+    assert competing.status_code == 201, competing.text
+    competing_id = competing.json()["id"]
+    assert client.post(f"/api/brands/{brand_id}/proposals/{competing_id}/approve").status_code == 200
+    assert client.post(f"/api/brands/{brand_id}/proposals/{competing_id}/apply").status_code == 200
+
+    assert client.post(f"/api/brands/{brand_id}/proposals/{stale_proposal_id}/approve").status_code == 200
+    applied = client.post(f"/api/brands/{brand_id}/proposals/{stale_proposal_id}/apply")
+    assert applied.status_code == 400
+    assert "version conflict" in applied.json()["detail"]
