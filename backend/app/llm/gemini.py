@@ -1,10 +1,14 @@
 from typing import Any
 import json
+import logging
 
 from google.genai import types
 
 from app.agent.state import AgentDecision
 from app.llm.schemas import LLMPlanResponse, LLMResponse
+
+
+logger = logging.getLogger(__name__)
 
 
 class GeminiGateway:
@@ -69,18 +73,58 @@ class GeminiGateway:
 			contents=prompt,
 			config=types.GenerateContentConfig(
 				response_mime_type="application/json",
+				response_schema=LLMPlanResponse,
 				system_instruction="NAME TAG planner must make one safe next-action decision.",
 			),
 		)
 		try:
-			payload = json.loads(response.text or "")
-			return LLMPlanResponse.model_validate(payload).to_decision()
-		except (json.JSONDecodeError, TypeError, ValueError) as exc:
+			raw_text = response.text or ""
+			logger.warning("RAW PLANNER RESPONSE: %r", raw_text)
+			payload = self._parse_json_object(raw_text)
+			payload = self._normalize_plan_payload(payload)
+			decision = LLMPlanResponse.model_validate(payload).to_decision()
+			logger.info("PARSED PLANNER DECISION: %r / type=%s", decision, type(decision).__name__)
+			return decision
+		except (json.JSONDecodeError, TypeError, ValueError, AttributeError) as exc:
+			logger.exception("Agent planner response parsing failed")
 			return AgentDecision(
 				action="ask_user",
-				reason=f"Planner 응답을 검증할 수 없습니다: {exc}",
+				reason=f"Planner 응답을 검증할 수 없습니다: {type(exc).__name__}",
 				message="요청을 안전하게 판단하지 못했습니다. 필요한 작업을 조금 더 구체적으로 알려주세요.",
 			)
+
+	@staticmethod
+	def _parse_json_object(text: str) -> dict[str, Any]:
+		candidate = text.strip()
+		if candidate.startswith("```"):
+			candidate = candidate.split("\n", 1)[1] if "\n" in candidate else candidate
+			candidate = candidate.rsplit("```", 1)[0].strip()
+		try:
+			payload = json.loads(candidate)
+		except json.JSONDecodeError:
+			start = candidate.find("{")
+			if start < 0:
+				raise
+			payload, _ = json.JSONDecoder().raw_decode(candidate[start:])
+		if not isinstance(payload, dict):
+			raise TypeError("Planner response must be a JSON object")
+		return payload
+
+	@staticmethod
+	def _normalize_plan_payload(payload: dict[str, Any]) -> dict[str, Any]:
+		aliases = {
+			"tool": "tool_name",
+			"params": "arguments",
+			"parameters": "arguments",
+			"skill": "skill_name",
+			"proposal": "proposal_id",
+			"resource_id": "pending_resource_id",
+		}
+		normalized = dict(payload)
+		for source, target in aliases.items():
+			if target not in normalized and source in normalized:
+				normalized[target] = normalized.pop(source)
+		return normalized
 
 	def _parse_response(self, text: str) -> LLMResponse:
 		try:

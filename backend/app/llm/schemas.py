@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -15,7 +15,14 @@ class LLMResponse:
 
 
 class LLMPlanResponse(BaseModel):
-	action: str
+	action: Literal[
+		"tool_call",
+		"final",
+		"ask_user",
+		"propose",
+		"replan",
+		"wait_for_approval",
+	]
 	reason: str = Field(min_length=1, max_length=500)
 	tool_name: str | None = None
 	arguments: dict[str, Any] = Field(default_factory=dict)

@@ -6,10 +6,11 @@ from app.llm.gemini import GeminiGateway
 class FakeModels:
     def __init__(self) -> None:
         self.calls: list[dict] = []
+        self.response_text = "테스트 응답"
 
     def generate_content(self, **kwargs):
         self.calls.append(kwargs)
-        return SimpleNamespace(text="테스트 응답")
+        return SimpleNamespace(text=self.response_text)
 
 
 class FakeClient:
@@ -80,3 +81,32 @@ def test_gemini_gateway_turns_direction_array_into_selectable_artifact() -> None
     assert response.text.startswith("세 가지 방향")
     assert response.artifact_type == "brand_direction_options"
     assert response.artifact_content["options"][0]["direction"] == "Critical Builder"
+
+
+def test_gemini_gateway_parses_fenced_planner_aliases() -> None:
+    gateway = object.__new__(GeminiGateway)
+
+    decision = gateway._parse_json_object(
+        '```json\n{"action":"tool_call","reason":"상태 확인",'
+        '"tool":"get_brand_state","params":{}}\n```'
+    )
+    normalized = gateway._normalize_plan_payload(decision)
+
+    assert normalized["tool_name"] == "get_brand_state"
+    assert normalized["arguments"] == {}
+
+
+def test_gemini_gateway_plan_agent_falls_back_with_parse_diagnostics(monkeypatch, caplog) -> None:
+    models = FakeModels()
+    models.response_text = "브랜드 상태를 확인할게요."
+    monkeypatch.setattr(
+        "google.genai.Client",
+        lambda api_key: FakeClient(models),
+    )
+
+    gateway = GeminiGateway(api_key="test-key", model="test-model")
+    with caplog.at_level("ERROR"):
+        decision = gateway.plan_agent("브랜드 상태를 보여줘", {}, [], [], {})
+
+    assert decision.action == "ask_user"
+    assert "Agent planner response parsing failed" in caplog.text
