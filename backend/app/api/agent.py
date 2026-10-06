@@ -105,6 +105,12 @@ def chat(
 		artifact=artifact_response,
 		proposal_id=result.get("proposal_id"),
 		context=result["context"],
+		agent={
+			"run_id": result.get("run_id"),
+			"mode": result["execution"]["mode"],
+			"status": result["execution"]["status"],
+		},
+		execution=result["execution"],
 	)
 
 

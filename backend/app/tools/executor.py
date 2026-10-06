@@ -91,7 +91,15 @@ class ToolExecutor:
         job = get_research_job(context.db, job_id)
         if job is None or job.brand_id != context.brand_id:
             raise ValueError("Research job not found")
-        return job
+        return {
+            "job_id": job.id,
+            "brand_id": job.brand_id,
+            "mode": job.mode,
+            "status": job.status,
+            "query": job.query,
+            "plan": job.plan,
+            "progress": job.progress,
+        }
 
     @staticmethod
     def _create_research_job(context: ToolContext, query: str, plan: dict | None = None) -> Any:

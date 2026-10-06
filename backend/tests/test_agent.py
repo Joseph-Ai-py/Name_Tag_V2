@@ -157,3 +157,76 @@ def test_agent_research_request_creates_approval_pending_job(client: TestClient)
     job = client.get(f"/api/research/jobs/{job_result['job_id']}")
     assert job.status_code == 200
     assert job.json()["status"] == "planning"
+
+
+def test_agent_complex_positioning_request_adapts_across_research_and_meeting(client: TestClient) -> None:
+    signup(client, "agent-complex@example.com")
+    brand_id = create_brand(client)
+
+    response = client.post(
+        "/api/agent/chat",
+        json={
+            "brand_id": brand_id,
+            "message": "시장과 경쟁사 근거를 조사해서 포지셔닝을 전면적으로 개선해줘",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["agent"]["mode"] == "complex"
+    assert body["agent"]["run_id"]
+    assert body["context"]["selected_skill"] == "generate_positioning"
+    assert body["execution"]["tools_used"] == [
+        "get_brand_state",
+        "get_brand_context",
+        "create_research_job",
+        "get_research_job",
+        "run_employee_meeting",
+    ]
+    assert body["proposal_id"]
+
+    state = client.get(f"/api/brands/{brand_id}/state").json()
+    assert state["state"]["brand"]["positioning"] is None
+
+
+def test_agent_budget_exhaustion_is_recorded_without_crashing(client: TestClient, monkeypatch) -> None:
+    signup(client, "agent-budget@example.com")
+    brand_id = create_brand(client)
+    monkeypatch.setattr(
+        agent_service,
+        "DEFAULT_BUDGET",
+        agent_service.AgentBudget(max_iterations=1, max_tool_calls=1, max_llm_calls=1),
+    )
+
+    response = client.post(
+        "/api/agent/chat",
+        json={"brand_id": brand_id, "message": "현재 브랜드 포지셔닝을 알려줘"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["agent"]["status"] == "budget_exceeded"
+    assert response.json()["execution"]["tools_used"] == ["get_brand_state"]
+
+
+def test_agent_tool_failure_is_degraded_and_traced(client: TestClient, monkeypatch) -> None:
+    signup(client, "agent-failure@example.com")
+    brand_id = create_brand(client)
+    original_execute = agent_service.ToolExecutor.execute
+
+    def fail_brand_state(self, name, context, **arguments):
+        if name == "get_brand_state":
+            raise TimeoutError("brand state timed out")
+        return original_execute(self, name, context, **arguments)
+
+    monkeypatch.setattr(agent_service.ToolExecutor, "execute", fail_brand_state)
+    response = client.post(
+        "/api/agent/chat",
+        json={"brand_id": brand_id, "message": "현재 브랜드 포지셔닝을 알려줘"},
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["agent"]["status"] == "degraded"
+    runs = client.get(f"/api/agent/brands/{brand_id}/runs")
+    assert runs.json()[0]["status"] == "degraded"
+    assert runs.json()[0]["tool_calls"][0]["status"] == "failed"

@@ -1,6 +1,7 @@
 READ_ROLES = {"owner", "editor", "viewer"}
 WRITE_ROLES = {"owner", "editor"}
 ACTION_ROLES = {"owner", "editor"}
+APPROVAL_REQUIRED_ROLES = {"owner", "editor"}
 
 
 def can_use_tool(role: str, permission: str) -> bool:
@@ -8,6 +9,8 @@ def can_use_tool(role: str, permission: str) -> bool:
 		"read": READ_ROLES,
 		"write": WRITE_ROLES,
 		"action": ACTION_ROLES,
+		"approval_required": APPROVAL_REQUIRED_ROLES,
+		"human_approval_required": APPROVAL_REQUIRED_ROLES,
 	}.get(permission)
 	if allowed_roles is None:
 		raise ValueError(f"Unknown tool permission: {permission}")
