@@ -17,6 +17,17 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     op.add_column("proposals", sa.Column("base_state_version", sa.Integer(), nullable=True))
+    op.execute(
+        sa.text(
+            "UPDATE proposals "
+            "SET base_state_version = ("
+            "SELECT version FROM brand_states "
+            "WHERE brand_states.brand_id = proposals.brand_id"
+            ") WHERE base_state_version IS NULL"
+        )
+    )
+    with op.batch_alter_table("proposals") as batch_op:
+        batch_op.alter_column("base_state_version", existing_type=sa.Integer(), nullable=False)
 
 
 def downgrade() -> None:

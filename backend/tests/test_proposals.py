@@ -91,5 +91,7 @@ def test_agent_proposal_rejects_stale_brand_state_version(client: TestClient) ->
 
     assert client.post(f"/api/brands/{brand_id}/proposals/{stale_proposal_id}/approve").status_code == 200
     applied = client.post(f"/api/brands/{brand_id}/proposals/{stale_proposal_id}/apply")
-    assert applied.status_code == 400
-    assert "version conflict" in applied.json()["detail"]
+    assert applied.status_code == 409
+    assert applied.json()["detail"]["code"] == "BRAND_STATE_VERSION_CONFLICT"
+    assert applied.json()["detail"]["expected_version"] == 1
+    assert applied.json()["detail"]["actual_version"] == 2

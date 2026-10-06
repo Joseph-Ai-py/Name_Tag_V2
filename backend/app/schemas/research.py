@@ -89,6 +89,7 @@ class ResearchReportResponse(BaseModel):
 class FindingProposalResponse(BaseModel):
 	proposal_id: str
 	finding_id: str
+	base_state_version: int
 	status: str
 
 

@@ -45,7 +45,7 @@ class Proposal(Base):
         nullable=False,
     )
 
-    base_state_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    base_state_version: Mapped[int] = mapped_column(Integer, nullable=False)
 
     status: Mapped[str] = mapped_column(
         String(20),

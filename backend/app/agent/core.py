@@ -168,6 +168,10 @@ class AgentCore:
             execution.evaluations.append({"decision": decision.model_dump()})
 
             if decision.action == "final":
+                if execution.llm_calls >= execution.budget.max_llm_calls:
+                    execution.status = "budget_exceeded"
+                    break
+                execution.llm_calls += 1
                 final_response = self._generate_response(skill_name, message, context, execution)
                 break
             if decision.action == "ask_user":
@@ -186,6 +190,10 @@ class AgentCore:
                 execution.evaluations.append({"replan": decision.reason})
                 continue
             if decision.action == "propose":
+                if execution.llm_calls >= execution.budget.max_llm_calls:
+                    execution.status = "budget_exceeded"
+                    break
+                execution.llm_calls += 1
                 final_response = self._generate_response(decision.skill_name or skill_name, message, context, execution)
                 proposal_id = self._create_response_proposal(final_response, route, execution.base_state_version)
                 break

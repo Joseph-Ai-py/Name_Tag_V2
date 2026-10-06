@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -28,6 +29,9 @@ import {
 	UserPlus,
 	X,
 } from "lucide-react";
+import { api } from "../api/client";
+import { brandStateQueryKey } from "../api/brands";
+import { useBrandState } from "../hooks/useBrandState";
 
 type Section = "Overview" | "Business" | "Market" | "Customer" | "Brand" | "Visual" | "Research" | "Assets" | "Documents" | "History";
 type Artifact = { id: string; type: string; title: string; content: Record<string, unknown>; status: string; proposalId?: string };
@@ -69,16 +73,6 @@ const emptyState = {
 	brand: { name: "", positioning: "", tone: "" },
 	visual: { mood: "", palette: [] as string[] },
 };
-
-async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
-	const response = await fetch(path, {
-		credentials: "include",
-		headers: { "Content-Type": "application/json", ...(options.headers ?? {}) },
-		...options,
-	});
-	if (!response.ok) throw new Error((await response.json().catch(() => null))?.detail ?? "요청을 완료하지 못했어요.");
-	return response.status === 204 ? (undefined as T) : response.json();
-}
 
 function ThemeToggle({ theme, onToggle }: { theme: ThemeMode; onToggle: () => void }) {
 	return <button className="theme-toggle" onClick={onToggle} aria-label={`${theme === "light" ? "다크" : "라이트"} 모드로 전환`} title={`${theme === "light" ? "다크" : "라이트"} 모드`}>{theme === "light" ? <Moon size={16} /> : <Sun size={16} />}</button>;
@@ -127,6 +121,8 @@ function LoginScreen({ onDemo, onLogin, onSignup, theme, onToggleTheme }: { onDe
 }
 
 function Workspace({ onLogout, liveBrandId, user, theme, onToggleTheme }: { onLogout: () => void; liveBrandId: string | null; user: CurrentUser; theme: ThemeMode; onToggleTheme: () => void }) {
+	const queryClient = useQueryClient();
+	const brandStateQuery = useBrandState(liveBrandId);
 	const [section, setSection] = useState<Section>("Overview");
 	const [messages, setMessages] = useState<Message[]>([{ role: "assistant", text: "좋아요. 지금까지의 브랜드 방향을 한 화면에 정리했어요. 어디부터 더 선명하게 만들어볼까요?" }]);
 	const [input, setInput] = useState("");
@@ -179,18 +175,16 @@ function Workspace({ onLogout, liveBrandId, user, theme, onToggleTheme }: { onLo
 		textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden";
 	}, [input]);
 	useEffect(() => {
-		if (!liveBrandId) return;
-		api<BrandStatePayload>(`/api/brands/${liveBrandId}/state`).then((payload) => {
-			const state = payload.state;
-			setLiveState(() => ({
-				business: { service: String(state.business?.service ?? ""), problem: String(state.business?.problem ?? "") },
-				market: { trend: String(state.market?.trends ?? ""), competitors: String(state.market?.competitors ?? "") },
-				customer: { target: String(state.customer?.target ?? ""), need: String(state.customer?.needs ?? "") },
-				brand: { name: String(state.brand?.name ?? ""), positioning: String(state.brand?.positioning ?? ""), tone: String(state.brand?.tone ?? "") },
-				visual: { mood: String(state.visual?.mood ?? ""), palette: [] },
-			}));
-		}).catch(() => undefined);
-	}, [liveBrandId]);
+		if (!liveBrandId || !brandStateQuery.data) return;
+		const state = brandStateQuery.data.state;
+		setLiveState(() => ({
+			business: { service: String(state.business?.service ?? ""), problem: String(state.business?.problem ?? "") },
+			market: { trend: String(state.market?.trends ?? ""), competitors: String(state.market?.competitors ?? "") },
+			customer: { target: String(state.customer?.target ?? ""), need: String(state.customer?.needs ?? "") },
+			brand: { name: String(state.brand?.name ?? ""), positioning: String(state.brand?.positioning ?? ""), tone: String(state.brand?.tone ?? "") },
+			visual: { mood: String(state.visual?.mood ?? ""), palette: [] },
+		}));
+	}, [brandStateQuery.data, liveBrandId]);
 	useEffect(() => {
 		if (!liveBrandId) return;
 		Promise.all([
@@ -267,6 +261,7 @@ function Workspace({ onLogout, liveBrandId, user, theme, onToggleTheme }: { onLo
 			await api(`/api/brands/${liveBrandId}/artifacts/${artifact.id}/${endpoint}`, { method: "POST" });
 		}
 		if (status === "approve") {
+			queryClient.invalidateQueries({ queryKey: brandStateQueryKey(liveBrandId) });
 			const payload = await api<BrandStatePayload>(`/api/brands/${liveBrandId}/state`);
 			const state = payload.state;
 			setLiveState({ business: { service: String(state.business?.service ?? ""), problem: String(state.business?.problem ?? "") }, market: { trend: String(state.market?.trends ?? ""), competitors: String(state.market?.competitors ?? "") }, customer: { target: String(state.customer?.target ?? ""), need: String(state.customer?.needs ?? "") }, brand: { name: String(state.brand?.name ?? ""), positioning: String(state.brand?.positioning ?? ""), tone: String(state.brand?.tone ?? "") }, visual: { mood: String(state.visual?.mood ?? ""), palette: [] } });

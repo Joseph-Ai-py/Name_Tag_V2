@@ -17,6 +17,7 @@ class ProposalResponse(BaseModel):
     title: str
     summary: str
     changes: dict[str, Any]
+    base_state_version: int
     status: str
     created_at: datetime
     updated_at: datetime

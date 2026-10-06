@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.permissions import require_editor_role
+from app.core.exceptions import BrandStateVersionConflictError
 from app.dependencies import get_current_user, get_database
 from app.models.user import User
 from app.schemas.artifact import ArtifactCreateRequest, ArtifactResponse
@@ -66,8 +67,18 @@ def apply_artifact_endpoint(brand_id: str, artifact_id: str, current_user: User 
     artifact = get_accessible_artifact(db, brand_id, artifact_id, current_user)
     try:
         return to_response(apply_artifact(db, artifact, current_user.id))
+    except BrandStateVersionConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "BRAND_STATE_VERSION_CONFLICT",
+                "message": str(exc),
+                "expected_version": exc.expected_version,
+                "actual_version": exc.actual_version,
+            },
+        ) from exc
     except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/api/brands/{brand_id}/artifacts/{artifact_id}/reject", response_model=ArtifactResponse)

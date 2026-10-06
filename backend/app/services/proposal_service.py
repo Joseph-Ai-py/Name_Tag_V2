@@ -1,11 +1,13 @@
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.models.proposal import Proposal
+from app.models.brand_state import BrandState
 from app.models.history import History
 from app.models.snapshot import Snapshot
 from app.services.mutation_service import apply_changes, validate_brand_state_change_paths
 from app.services.brand_state_service import get_brand_state
+from app.core.exceptions import BrandStateVersionConflictError
 
 from copy import deepcopy
 
@@ -20,6 +22,9 @@ def create_proposal(
     base_state_version: int | None = None,
 ) -> Proposal:
     validate_brand_state_change_paths(changes)
+    brand_state = get_brand_state(db=db, brand_id=brand_id)
+    if brand_state is None:
+        raise ValueError("Brand state not found")
 
     proposal = Proposal(
         brand_id=brand_id,
@@ -27,7 +32,7 @@ def create_proposal(
         title=title.strip(),
         summary=summary.strip(),
         changes=changes,
-        base_state_version=base_state_version,
+        base_state_version=brand_state.version,
         status="pending",
     )
 
@@ -77,21 +82,12 @@ def apply_proposal(
             "Only approved proposals can be applied"
         )
 
-    brand_state = get_brand_state(
-        db=db,
-        brand_id=proposal.brand_id,
-    )
+    brand_state = get_brand_state(db=db, brand_id=proposal.brand_id)
 
     if brand_state is None:
         raise ValueError(
             "Brand state not found"
         )
-
-    if (
-        proposal.base_state_version is not None
-        and brand_state.version != proposal.base_state_version
-    ):
-        raise ValueError("Brand state version conflict")
 
     previous_state = deepcopy(brand_state.state)
     previous_version = brand_state.version
@@ -110,6 +106,23 @@ def apply_proposal(
         changes=proposal.changes,
     )
 
+    result = db.execute(
+        update(BrandState)
+        .where(
+            BrandState.id == brand_state.id,
+            BrandState.version == proposal.base_state_version,
+        )
+        .values(state=next_state, version=previous_version + 1)
+    )
+    if result.rowcount != 1:
+        db.rollback()
+        current = get_brand_state(db=db, brand_id=proposal.brand_id)
+        actual_version = current.version if current is not None else previous_version
+        raise BrandStateVersionConflictError(
+            proposal.brand_id,
+            proposal.base_state_version,
+            actual_version,
+        )
     brand_state.state = next_state
     brand_state.version = previous_version + 1
 

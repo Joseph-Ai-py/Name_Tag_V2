@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_current_user, get_database
+from app.core.exceptions import BrandStateVersionConflictError
 from app.models.user import User
 from app.schemas.proposal import (
     ProposalCreateRequest,
@@ -70,6 +71,7 @@ def create_proposal_endpoint(
         title=proposal.title,
         summary=proposal.summary,
         changes=proposal.changes,
+        base_state_version=proposal.base_state_version,
         status=proposal.status,
         created_at=proposal.created_at,
         updated_at=proposal.updated_at,
@@ -110,6 +112,7 @@ def list_proposals(
             title=proposal.title,
             summary=proposal.summary,
             changes=proposal.changes,
+            base_state_version=proposal.base_state_version,
             status=proposal.status,
             created_at=proposal.created_at,
             updated_at=proposal.updated_at,
@@ -161,6 +164,7 @@ def get_proposal_endpoint(
         title=proposal.title,
         summary=proposal.summary,
         changes=proposal.changes,
+        base_state_version=proposal.base_state_version,
         status=proposal.status,
         created_at=proposal.created_at,
         updated_at=proposal.updated_at,
@@ -220,6 +224,7 @@ def approve_proposal(
         title=proposal.title,
         summary=proposal.summary,
         changes=proposal.changes,
+        base_state_version=proposal.base_state_version,
         status=proposal.status,
         created_at=proposal.created_at,
         updated_at=proposal.updated_at,
@@ -273,11 +278,18 @@ def apply_proposal_endpoint(
             proposal=proposal,
             user_id=current_user.id,
         )
-    except ValueError as exc:
+    except BrandStateVersionConflictError as exc:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(exc),
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "BRAND_STATE_VERSION_CONFLICT",
+                "message": str(exc),
+                "expected_version": exc.expected_version,
+                "actual_version": exc.actual_version,
+            },
         ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     return ProposalResponse(
         id=proposal.id,
@@ -286,6 +298,7 @@ def apply_proposal_endpoint(
         title=proposal.title,
         summary=proposal.summary,
         changes=proposal.changes,
+        base_state_version=proposal.base_state_version,
         status=proposal.status,
         created_at=proposal.created_at,
         updated_at=proposal.updated_at,
@@ -345,6 +358,7 @@ def reject_proposal(
         title=proposal.title,
         summary=proposal.summary,
         changes=proposal.changes,
+        base_state_version=proposal.base_state_version,
         status=proposal.status,
         created_at=proposal.created_at,
         updated_at=proposal.updated_at,

@@ -227,5 +227,6 @@ def propose_finding_application(
 	return FindingProposalResponse(
 		proposal_id=proposal.id,
 		finding_id=finding.id,
+		base_state_version=proposal.base_state_version,
 		status=proposal.status,
 	)

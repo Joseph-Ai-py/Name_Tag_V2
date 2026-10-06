@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_current_user, get_database
+from app.core.exceptions import BrandStateVersionConflictError
 from app.models.user import User
 from app.schemas.brand_state import (
     BrandStateResponse,
@@ -89,9 +90,18 @@ def update_brand_state_endpoint(
             changes=payload.state,
             expected_version=payload.expected_version,
         )
+    except BrandStateVersionConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "BRAND_STATE_VERSION_CONFLICT",
+                "message": str(exc),
+                "expected_version": exc.expected_version,
+                "actual_version": exc.actual_version,
+            },
+        ) from exc
     except ValueError as exc:
-        status_code = 409 if str(exc) == "Brand state version conflict" else 400
-        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return BrandStateResponse(
         id=brand_state.id,
