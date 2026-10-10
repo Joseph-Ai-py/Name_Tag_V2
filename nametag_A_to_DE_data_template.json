@@ -1,0 +1,353 @@
+{
+  "brand_info": {
+    "brand_name": "",
+    "brand_name_en": "",
+    "name_meaning": "",
+    "slogan": "",
+    "story_summary": "",
+    "seed_color": "",
+    "seed_color_reason": ""
+  },
+  "interview_data": {
+    "interview_data_a": "",
+    "interview_data_b": "",
+    "interview_data_c": "",
+    "interview_data_de": ""
+  },
+  "data_a": {
+    "brand_philosophy": {
+      "manifesto": "",
+      "raison_detre": "",
+      "stand_against": [
+        "",
+        "",
+        ""
+      ],
+      "stand_for": [
+        "",
+        "",
+        ""
+      ]
+    },
+    "brand_essence": {
+      "keyword": "",
+      "keyword_explanation": "",
+      "brand_definition": ""
+    },
+    "core_identity": {
+      "mission": "",
+      "vision": "",
+      "core_values": [
+        {
+          "value": "",
+          "description": "",
+          "example": ""
+        },
+        {
+          "value": "",
+          "description": "",
+          "example": ""
+        },
+        {
+          "value": "",
+          "description": "",
+          "example": ""
+        }
+      ]
+    },
+    "naming_expansion": {
+      "name_story": "",
+      "domain_suggestions": [
+        "",
+        "",
+        ""
+      ],
+      "sns_handles": [
+        "",
+        "",
+        ""
+      ],
+      "alternative_names": [
+        {
+          "name": "",
+          "name_en": "",
+          "rationale": ""
+        },
+        {
+          "name": "",
+          "name_en": "",
+          "rationale": ""
+        }
+      ]
+    },
+    "slogan_expansion": {
+      "main_slogan_en": "",
+      "sub_slogans": [
+        {
+          "slogan": "",
+          "emphasis": ""
+        },
+        {
+          "slogan": "",
+          "emphasis": ""
+        },
+        {
+          "slogan": "",
+          "emphasis": ""
+        }
+      ]
+    },
+    "brand_story_full": "",
+    "positioning": {
+      "statement": "",
+      "differentiators": [
+        {
+          "point": "",
+          "description": ""
+        },
+        {
+          "point": "",
+          "description": ""
+        },
+        {
+          "point": "",
+          "description": ""
+        }
+      ],
+      "positioning_map_visualized": {
+        "axis_x": "",
+        "axis_y": "",
+        "quadrants_description": "",
+        "our_exact_position": ""
+      }
+    },
+    "unbreakable_brand_promise": {
+      "declaration": "",
+      "proof_of_promise": [
+        {
+          "channel": "",
+          "actionable_rule": ""
+        },
+        {
+          "channel": "",
+          "actionable_rule": ""
+        },
+        {
+          "channel": "",
+          "actionable_rule": ""
+        }
+      ]
+    }
+  },
+  "data_b": {
+    "persona_strategy": {
+      "strategic_reasoning": "",
+      "core_target_group": {
+        "definition": "",
+        "demographics": "",
+        "lifestyle_keywords": [
+          "",
+          "",
+          "",
+          "",
+          ""
+        ],
+        "consumption_behavior": ""
+      },
+      "primary_persona": {
+        "name": "",
+        "age_and_job": "",
+        "daily_scene": "",
+        "pain_point_and_desire": "",
+        "emotional_needs": [
+          "",
+          "",
+          ""
+        ],
+        "deal_breaker": ""
+      },
+      "secondary_personas": [
+        {
+          "id": 1,
+          "name_and_demographic": "",
+          "character_type": "",
+          "why_they_buy": ""
+        },
+        {
+          "id": 2,
+          "name_and_demographic": "",
+          "character_type": "",
+          "why_they_buy": ""
+        },
+        {
+          "id": 3,
+          "name_and_demographic": "",
+          "character_type": "",
+          "why_they_buy": ""
+        },
+        {
+          "id": 4,
+          "name_and_demographic": "",
+          "character_type": "",
+          "why_they_buy": ""
+        }
+      ],
+      "emotional_triggers": [
+        {
+          "trigger": "",
+          "reason": ""
+        },
+        {
+          "trigger": "",
+          "reason": ""
+        },
+        {
+          "trigger": "",
+          "reason": ""
+        }
+      ]
+    },
+    "customer_journey": {
+      "strategic_reasoning": "",
+      "customer_journey_map": [
+        {
+          "stage": "인지",
+          "touchpoint": "",
+          "customer_emotion": "",
+          "brand_action": ""
+        },
+        {
+          "stage": "탐색",
+          "touchpoint": "",
+          "customer_emotion": "",
+          "brand_action": ""
+        },
+        {
+          "stage": "구매",
+          "touchpoint": "",
+          "customer_emotion": "",
+          "brand_action": ""
+        },
+        {
+          "stage": "재구매",
+          "touchpoint": "",
+          "customer_emotion": "",
+          "brand_action": ""
+        },
+        {
+          "stage": "전파",
+          "touchpoint": "",
+          "customer_emotion": "",
+          "brand_action": ""
+        }
+      ]
+    }
+  },
+  "data_c": {
+    "color_palette": [
+      {
+        "color_name": "",
+        "hex_code": "#000000",
+        "role": "Primary",
+        "reason": ""
+      },
+      {
+        "color_name": "",
+        "hex_code": "#000000",
+        "role": "Secondary",
+        "reason": ""
+      },
+      {
+        "color_name": "",
+        "hex_code": "#000000",
+        "role": "Accent",
+        "reason": ""
+      },
+      {
+        "color_name": "",
+        "hex_code": "#FFFFFF",
+        "role": "Background",
+        "reason": ""
+      },
+      {
+        "color_name": "",
+        "hex_code": "#000000",
+        "role": "Text Color",
+        "reason": ""
+      }
+    ],
+    "typography": {
+      "primary_font": {
+        "font_name_kr": "",
+        "google_fonts_family": "",
+        "weight_recommendation": 800,
+        "usage_and_reason": ""
+      },
+      "secondary_font": {
+        "font_name_kr": "",
+        "google_fonts_family": "",
+        "weight_recommendation": 400,
+        "usage_and_reason": ""
+      }
+    },
+    "visual_mood_guide": {
+      "photography_do": [
+        "",
+        "",
+        ""
+      ],
+      "photography_dont": [
+        "",
+        "",
+        ""
+      ],
+      "mood_keywords": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    "design_principles": {
+      "layout_direction": "",
+      "image_processing": ""
+    }
+  },
+  "data_de": {
+    "logo_identity": {
+      "concept": {
+        "symbol_reason": "",
+        "color_reason": "",
+        "overall_message": "",
+        "direction_text": ""
+      },
+      "guide": {
+        "minimum_size": "",
+        "clear_space": ""
+      }
+    },
+    "character_guide": {
+      "intro": {
+        "name": "",
+        "appearance": "",
+        "symbolic_value": ""
+      },
+      "reasoning": {
+        "selection_reason": "",
+        "emotional_connection": ""
+      },
+      "story": {
+        "background": "",
+        "brand_role": ""
+      }
+    },
+    "logo_path": null,
+    "char_path": null
+  },
+  "_meta": {
+    "source_repository": "https://github.com/Joseph-Ai-py/Name_Tag",
+    "purpose": "Legacy A/B/C/DE data structure template derived from repository schemas and prompt output shapes",
+    "note": "Empty strings and null values are placeholders, not actual generated brand data. Interview answer strings are retained separately."
+  }
+}

@@ -65,6 +65,29 @@ def test_proposal_rejects_unsupported_change_paths(client: TestClient) -> None:
     assert "Unsupported BrandState path" in response.json()["detail"]
 
 
+def test_pending_proposal_can_be_deleted_but_applied_proposal_cannot(client: TestClient) -> None:
+    signup(client, "delete-proposal@example.com")
+    brand_id = create_brand(client)
+    created = client.post(
+        f"/api/brands/{brand_id}/proposals",
+        json={"title": "Remove me", "summary": "Pending proposal", "changes": {"brand.tone": "warm"}},
+    )
+    proposal_id = created.json()["id"]
+
+    deleted = client.delete(f"/api/brands/{brand_id}/proposals/{proposal_id}")
+    assert deleted.status_code == 204, deleted.text
+    assert client.get(f"/api/brands/{brand_id}/proposals/{proposal_id}").status_code == 404
+
+    retained = client.post(
+        f"/api/brands/{brand_id}/proposals",
+        json={"title": "Keep me", "summary": "Applied proposal", "changes": {"brand.tone": "clear"}},
+    )
+    retained_id = retained.json()["id"]
+    assert client.post(f"/api/brands/{brand_id}/proposals/{retained_id}/approve").status_code == 200
+    assert client.post(f"/api/brands/{brand_id}/proposals/{retained_id}/apply").status_code == 200
+    assert client.delete(f"/api/brands/{brand_id}/proposals/{retained_id}").status_code == 409
+
+
 def test_nested_market_proposal_is_applied_to_brand_state(client: TestClient) -> None:
     signup(client, "market-proposal@example.com")
     brand_id = create_brand(client)

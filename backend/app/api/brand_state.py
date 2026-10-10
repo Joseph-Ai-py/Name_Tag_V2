@@ -89,6 +89,7 @@ def update_brand_state_endpoint(
             brand_state=brand_state,
             changes=payload.state,
             expected_version=payload.expected_version,
+            user_id=current_user.id,
         )
     except BrandStateVersionConflictError as exc:
         raise HTTPException(

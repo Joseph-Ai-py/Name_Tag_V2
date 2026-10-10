@@ -363,3 +363,26 @@ def reject_proposal(
         created_at=proposal.created_at,
         updated_at=proposal.updated_at,
     )
+
+
+@router.delete(
+    "/{brand_id}/proposals/{proposal_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_pending_proposal(
+    brand_id: str,
+    proposal_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_database),
+):
+    membership = get_brand_membership(db, brand_id, current_user.id)
+    if membership is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Brand not found")
+    require_editor_role(membership.role)
+    proposal = get_proposal(db, brand_id, proposal_id)
+    if proposal is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proposal not found")
+    if proposal.status != "pending":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only pending proposals can be deleted")
+    db.delete(proposal)
+    db.commit()

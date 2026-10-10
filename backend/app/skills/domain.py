@@ -13,7 +13,13 @@ DOMAIN_PROMPTS: dict[str, str] = {
     "generate_persona": "Legacy B1 결과를 생성합니다. 핵심 타겟, primary_persona, secondary_personas, emotional_triggers를 반환합니다.",
     "generate_customer_journey": "Legacy B2 결과를 생성합니다. 인지부터 재구매까지의 고객 여정과 채널별 행동을 반환합니다.",
     "analyze_customer_swot": "Legacy B4 결과를 생성합니다. strengths, weaknesses, opportunities, threats와 brand_responses를 반환합니다.",
-    "generate_business_model": "Legacy B5 결과를 생성합니다. 문제, 가치 제안, 수익, 비용, 채널, 검증 가설을 반환합니다.",
+    "generate_business_model": (
+        "Business Model Canvas를 생성합니다. 반드시 JSON 객체로만 반환하고 다음 9개 키를 모두 포함하세요: "
+        "customer_segments, value_proposition, channels, customer_relationships, revenue_streams, "
+        "key_resources, key_activities, key_partnerships, cost_structure. "
+        "각 값은 근거 있는 구체적인 항목의 배열 또는 짧은 설명으로 작성하세요. "
+        "확인되지 않은 고객, 매출, 비용 수치를 사실처럼 만들지 말고 가설 또는 미정으로 표시하세요."
+    ),
     "generate_visual_identity": "Legacy C1 결과를 생성합니다. color_palette, typography, visual_mood_guide, design_principles를 반환합니다.",
     "generate_logo_identity": "Legacy DE logo identity 결과를 생성합니다. concept와 guide를 반환합니다.",
     "generate_character_guide": "Legacy DE character guide 결과를 생성합니다. intro, reasoning, story를 반환합니다.",

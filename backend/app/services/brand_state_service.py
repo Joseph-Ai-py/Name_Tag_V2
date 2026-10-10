@@ -5,6 +5,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.brand_state import BrandState
+from app.models.history import History
+from app.models.snapshot import Snapshot
 from app.services.mutation_service import validate_brand_state_change_paths
 from app.core.exceptions import BrandStateVersionConflictError
 
@@ -105,6 +107,7 @@ def update_brand_state(
     brand_state: BrandState,
     changes: dict[str, Any],
     expected_version: int | None = None,
+    user_id: str | None = None,
 ) -> BrandState:
     if (
         expected_version is not None
@@ -117,8 +120,28 @@ def update_brand_state(
         )
 
     validate_brand_state_change_paths(changes)
+    previous_state = deepcopy(brand_state.state)
+    previous_version = brand_state.version
+    if user_id:
+        db.add(Snapshot(
+            brand_id=brand_state.brand_id,
+            version=previous_version,
+            state=previous_state,
+            created_by=user_id,
+        ))
     brand_state.state = merge_state(brand_state.state, changes)
     brand_state.version += 1
+    if user_id:
+        db.add(History(
+            brand_id=brand_state.brand_id,
+            user_id=user_id,
+            action="direct_brand_state_edit",
+            details={
+                "from_version": previous_version,
+                "to_version": brand_state.version,
+                "changes": changes,
+            },
+        ))
     db.commit()
     db.refresh(brand_state)
     return brand_state

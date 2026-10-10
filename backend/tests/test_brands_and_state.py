@@ -46,6 +46,14 @@ def test_brand_crud_and_state_patch_preserves_other_sections(client: TestClient)
     assert body["state"]["customer"]["target"] is None
     assert body["state"]["visual"]["colors"] == []
 
+    history = client.get(f"/api/brands/{brand_id}/history")
+    assert history.status_code == 200, history.text
+    assert history.json()[0]["action"] == "direct_brand_state_edit"
+
+    snapshots = client.get(f"/api/brands/{brand_id}/snapshots")
+    assert snapshots.status_code == 200, snapshots.text
+    assert snapshots.json()[0]["version"] == initial_version
+
     stale_update = client.patch(
         f"/api/brands/{brand_id}/state",
         json={

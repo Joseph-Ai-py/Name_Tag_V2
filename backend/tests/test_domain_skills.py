@@ -33,6 +33,26 @@ def test_legacy_positioning_output_maps_to_v2_brand_state() -> None:
     }
 
 
+def test_business_model_output_maps_canvas_to_business_state() -> None:
+    canvas = {
+        "customer_segments": ["AI 스타트업"],
+        "value_proposition": ["PoC를 실제 제품으로 전환"],
+        "channels": ["직접 컨설팅"],
+        "customer_relationships": ["장기 파트너십"],
+        "revenue_streams": ["프로젝트 수수료"],
+        "key_resources": ["AI 엔지니어링 역량"],
+        "key_activities": ["제품화 설계"],
+        "key_partnerships": ["클라우드 파트너"],
+        "cost_structure": ["인건비", "클라우드 비용"],
+    }
+    response = normalize_domain_response(
+        "generate_business_model",
+        LLMResponse(text="캔버스를 생성했습니다.", artifact_content=canvas),
+    )
+
+    assert response.proposed_changes == {"business.business_model": canvas}
+
+
 def test_domain_skill_does_not_overwrite_existing_proposal() -> None:
     response = normalize_domain_response(
         "generate_positioning",

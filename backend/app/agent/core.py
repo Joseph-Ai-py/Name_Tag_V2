@@ -244,6 +244,21 @@ class AgentCore:
             execution.tool_calls += 1
             try:
                 self.validator.validate(tool_name, decision.arguments, self.role)
+            except (ValueError, PermissionError) as exc:
+                execution.failed_tools.append(tool_name)
+                execution.failure_code = "tool_validation_error"
+                execution.failure_stage = "tool_validation"
+                execution.failure_type = type(exc).__name__
+                execution.evaluations.append({"tool": tool_name, "status": "validation_failed", "error": str(exc)})
+                self.db.add(ToolCall(
+                    agent_run_id=agent_run.id,
+                    tool_name=tool_name,
+                    status="failed",
+                    arguments=decision.arguments,
+                    result={"error": "Tool validation failed", "type": type(exc).__name__},
+                ))
+                continue
+            try:
                 result = self.tool_executor.execute(tool_name, tool_context, **decision.arguments)
                 result = self._json_value(result)
                 execution.tool_results[tool_name] = result

@@ -108,8 +108,26 @@ def test_planner_gateway_failure_is_recorded_on_execution_state() -> None:
     decision = AgentPlanner(FailingGateway()).decide("hello", {}, state, [], [], {})
 
     assert decision.action == "ask_user"
-    assert state.failure_code == "planner_gateway_error"
+    assert state.failure_code == "gateway_error"
     assert state.failure_stage == "planner"
     assert state.failure_type == "TimeoutError"
+
+
+def test_planner_unexpected_result_is_classified_as_invalid_action() -> None:
+    class InvalidGateway:
+        def plan_agent(self, **kwargs):
+            return {"action": "tool_call"}
+
+    state = AgentExecutionState(
+        goal="hello",
+        mode="simple",
+        route="conversation",
+        budget=AgentBudget(),
+    )
+
+    decision = AgentPlanner(InvalidGateway()).decide("hello", {}, state, [], [], {})
+
+    assert decision.action == "ask_user"
+    assert state.failure_code == "invalid_action"
 
 

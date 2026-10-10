@@ -82,7 +82,7 @@ class GeminiGateway:
 		)
 		try:
 			raw_text = response.text or ""
-			logger.warning("RAW PLANNER RESPONSE: %r", raw_text)
+			logger.info("Planner response received (%d chars)", len(raw_text))
 			payload = self._parse_json_object(raw_text)
 			payload = self._normalize_plan_payload(payload)
 			decision = LLMPlanResponse.model_validate(payload).to_decision()
