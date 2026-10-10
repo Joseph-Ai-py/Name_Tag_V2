@@ -17,6 +17,8 @@ class AgentChatResponse(BaseModel):
 	message: str
 	artifact: ArtifactResponse | None = None
 	proposal_id: str | None = None
+	proposal: dict[str, Any] | None = None
+	research_job: dict[str, Any] | None = None
 	context: dict[str, Any] = {}
 	agent: dict[str, Any] = {}
 	execution: dict[str, Any] = {}

@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 from app.models.agent_run import AgentRun
 from app.models.tool_call import ToolCall
 from app.llm.schemas import LLMResponse
+from app.agent.planner import AgentPlanner
 from app.services import agent_service
 from conftest import signup
 from test_brands_and_state import create_brand
@@ -81,6 +82,8 @@ def test_agent_brand_request_creates_pending_proposal_without_mutation(client: T
     body = response.json()
     assert body["route"] == "brand"
     assert body["proposal_id"]
+    assert body["proposal"]["id"] == body["proposal_id"]
+    assert body["proposal"]["status"] == "pending"
     assert body["context"]["tool_results"]["get_brand_state"]["version"] == 1
     assert body["context"]["tool_results"]["get_brand_context"]
 
@@ -153,9 +156,45 @@ def test_agent_research_request_creates_approval_pending_job(client: TestClient)
     assert body["route"] == "research"
     job_result = body["context"]["tool_results"]["create_research_job"]
     assert job_result["status"] == "planning"
+    assert body["execution"]["status"] == "waiting_for_approval"
+    assert body["execution"]["pending_resource_id"] == job_result["job_id"]
+    assert body["research_job"]["id"] == job_result["job_id"]
+    assert body["research_job"]["status"] == "planning"
     job = client.get(f"/api/research/jobs/{job_result['job_id']}")
     assert job.status_code == 200
     assert job.json()["status"] == "planning"
+
+
+def test_agent_research_job_status_lookup_finishes_without_planner_loop(client: TestClient, monkeypatch) -> None:
+    signup(client, "agent-research-status@example.com")
+    brand_id = create_brand(client)
+    original_execute = agent_service.ToolExecutor.execute
+
+    def choose_status_lookup(self, **kwargs):
+        from app.agent.state import AgentDecision
+
+        return AgentDecision(
+            action="tool_call",
+            tool_name="get_research_job",
+            arguments={"job_id": "job-1"},
+            reason="Research 상태를 확인합니다.",
+        )
+
+    def get_completed_job(self, name, context, **arguments):
+        if name == "get_research_job":
+            return {"job_id": arguments["job_id"], "status": "completed", "query": "시장 분석", "progress": {}}
+        return original_execute(self, name, context, **arguments)
+
+    monkeypatch.setattr(agent_service.ToolExecutor, "execute", get_completed_job)
+    monkeypatch.setattr(AgentPlanner, "decide", choose_status_lookup)
+    response = client.post(
+        "/api/agent/chat",
+        json={"brand_id": brand_id, "message": "리서치 상태를 확인해줘"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["execution"]["status"] == "completed"
+    assert "Research가 완료되었습니다" in response.json()["message"]
 
 
 def test_agent_complex_positioning_request_adapts_across_research_and_meeting(client: TestClient) -> None:
@@ -207,7 +246,7 @@ def test_agent_budget_exhaustion_is_recorded_without_crashing(client: TestClient
     assert response.json()["execution"]["tools_used"] == ["get_brand_state"]
 
 
-def test_agent_tool_failure_is_degraded_and_traced(client: TestClient, monkeypatch) -> None:
+def test_agent_tool_failure_is_replanned_and_traced(client: TestClient, monkeypatch) -> None:
     signup(client, "agent-failure@example.com")
     brand_id = create_brand(client)
     original_execute = agent_service.ToolExecutor.execute
@@ -226,6 +265,11 @@ def test_agent_tool_failure_is_degraded_and_traced(client: TestClient, monkeypat
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["agent"]["status"] == "degraded"
+    assert body["execution"]["iterations"] == 2
+    assert body["execution"]["tool_calls"] == 1
+    assert body["execution"]["failure_code"] == "tool_execution_error"
+    assert body["execution"]["failure_stage"] == "tool_execution"
+    assert body["execution"]["failure_type"] == "TimeoutError"
     runs = client.get(f"/api/agent/brands/{brand_id}/runs")
     assert runs.json()[0]["status"] == "degraded"
     assert runs.json()[0]["tool_calls"][0]["status"] == "failed"

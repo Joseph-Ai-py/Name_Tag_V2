@@ -143,7 +143,7 @@ def run_deep_research_job(db: Session, job: ResearchJob) -> ResearchReport:
 			suggested_fields=[],
 		))
 		job.status = "completed"
-		job.progress = {"stage": "completed", "sources_found": 0}
+		job.progress = {"stage": "completed", "sources_found": len(source_ids)}
 		db.add(ResearchEvent(job_id=job.id, type="research_completed", stage="completed", message="Deep Research가 완료되었습니다."))
 		db.commit()
 		db.refresh(job)

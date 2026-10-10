@@ -8,6 +8,7 @@ from app.models.artifact import Artifact
 from app.models.asset import Asset
 from app.models.brand import Brand
 from app.models.research_report import ResearchReport
+from app.services.research_service import get_report_findings, get_report_sources
 from app.services.brand_state_service import get_brand_state
 
 
@@ -40,7 +41,37 @@ def build_json_export(db: Session, brand: Brand) -> dict[str, Any]:
             for item in assets
         ],
         "research": [
-            {"id": item.id, "title": item.title, "executive_summary": item.executive_summary, "sections": item.sections, "status": item.status}
+            {
+                "id": item.id,
+                "title": item.title,
+                "executive_summary": item.executive_summary,
+                "sections": item.sections,
+                "status": item.status,
+                "sources": [
+                    {
+                        "id": source.id,
+                        "url": source.url,
+                        "title": source.title,
+                        "publisher": source.publisher,
+                        "summary": source.summary,
+                        "source_type": source.source_type,
+                        "accessed_at": source.accessed_at,
+                    }
+                    for source in get_report_sources(db, item.id)
+                ],
+                "findings": [
+                    {
+                        "id": finding.id,
+                        "statement": finding.statement,
+                        "evidence": finding.evidence,
+                        "source_ids": finding.source_ids,
+                        "confidence": finding.confidence,
+                        "suggested_fields": finding.suggested_fields,
+                        "applied": finding.applied,
+                    }
+                    for finding in get_report_findings(db, item.id)
+                ],
+            }
             for item in research
         ],
     }

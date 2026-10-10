@@ -29,8 +29,9 @@ class AgentPlanner:
                 skills=skills,
                 evaluation=evaluation,
             )
-        except Exception:
+        except Exception as exc:
             logger.exception("Agent planner gateway failed")
+            self._record_failure(state, "planner_gateway_error", exc)
             return AgentDecision(
                 action="ask_user",
                 reason="Planner gateway 호출에 실패했습니다.",
@@ -38,9 +39,26 @@ class AgentPlanner:
             )
         if not isinstance(decision, AgentDecision):
             logger.error("Planner returned unexpected decision type: %r", type(decision))
+            self._record_failure(
+                state,
+                "planner_invalid_result",
+                TypeError(f"unexpected decision type: {type(decision).__name__}"),
+            )
             return AgentDecision(
                 action="ask_user",
                 reason="Planner 결과 형식이 올바르지 않습니다.",
                 message="요청을 안전하게 판단하지 못했습니다.",
             )
+        if decision.action == "ask_user" and decision.reason.startswith("Planner 응답을 검증할 수 없습니다"):
+            self._record_failure(state, "planner_response_invalid", ValueError(decision.reason))
         return decision
+
+    @staticmethod
+    def _record_failure(
+        state: AgentExecutionState,
+        code: str,
+        error: Exception,
+    ) -> None:
+        state.failure_code = code
+        state.failure_stage = "planner"
+        state.failure_type = type(error).__name__

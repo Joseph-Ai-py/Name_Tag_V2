@@ -94,6 +94,7 @@ class MockLLMGateway:
 
 		available_tools = {item["name"] for item in tools}
 		completed = set(context.get("agent", {}).get("completed_steps", []))
+		failed = set(context.get("agent", {}).get("failed_tools", []))
 		missing = evaluation.get("missing", [])
 		goal_lower = goal.casefold()
 		if (
@@ -114,7 +115,11 @@ class MockLLMGateway:
 				reason=evaluation.get("reason", "필요한 정보가 부족합니다."),
 				message=evaluation.get("message", "작업을 진행하기 위해 필요한 정보를 알려주세요."),
 			)
-		if "brand_state" not in context.get("agent", {}).get("observed", {}) and "get_brand_state" in available_tools:
+		if (
+			"brand_state" not in context.get("agent", {}).get("observed", {})
+			and "get_brand_state" in available_tools
+			and "get_brand_state" not in failed
+		):
 			return AgentDecision(action="tool_call", tool_name="get_brand_state", reason="현재 BrandState를 먼저 확인합니다.")
 		if (
 			("research" in goal_lower or "조사" in goal_lower or "경쟁사" in goal_lower)

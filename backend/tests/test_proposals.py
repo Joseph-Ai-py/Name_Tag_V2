@@ -65,6 +65,34 @@ def test_proposal_rejects_unsupported_change_paths(client: TestClient) -> None:
     assert "Unsupported BrandState path" in response.json()["detail"]
 
 
+def test_nested_market_proposal_is_applied_to_brand_state(client: TestClient) -> None:
+    signup(client, "market-proposal@example.com")
+    brand_id = create_brand(client)
+
+    proposal = client.post(
+        f"/api/brands/{brand_id}/proposals",
+        json={
+            "title": "Market analysis",
+            "summary": "Apply research-backed market fields",
+            "changes": {
+                "market": {
+                    "tam": "Global AI consulting market",
+                    "trends": ["Productization"],
+                }
+            },
+        },
+    )
+    assert proposal.status_code == 201, proposal.text
+    proposal_id = proposal.json()["id"]
+    assert client.post(f"/api/brands/{brand_id}/proposals/{proposal_id}/approve").status_code == 200
+    applied = client.post(f"/api/brands/{brand_id}/proposals/{proposal_id}/apply")
+    assert applied.status_code == 200, applied.text
+
+    state = client.get(f"/api/brands/{brand_id}/state").json()["state"]
+    assert state["market"]["tam"] == "Global AI consulting market"
+    assert state["market"]["trends"] == ["Productization"]
+
+
 def test_agent_proposal_rejects_stale_brand_state_version(client: TestClient) -> None:
     signup(client, "stale-proposal@example.com")
     brand_id = create_brand(client)

@@ -125,6 +125,8 @@ def approve_job(job_id: str, current_user: User = Depends(get_current_user), db:
 		raise HTTPException(status_code=404, detail="Research job not found")
 	membership = require_brand_member(db, job.brand_id, current_user.id)
 	require_editor_role(membership.role)
+	if job.status in {"approved", "queued", "running", "completed"}:
+		return job_response(job)
 	try:
 		return job_response(update_research_job_status(db, job, "approved"))
 	except ValueError as exc:

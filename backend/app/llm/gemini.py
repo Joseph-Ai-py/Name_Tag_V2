@@ -63,6 +63,10 @@ class GeminiGateway:
 		prompt = (
 			"You are the planning engine of NAME TAG. Return only valid JSON. "
 			"Choose exactly one action: tool_call, final, ask_user, propose, replan, wait_for_approval. "
+			"Treat greetings, thanks, acknowledgements, casual questions, and requests for explanation as conversation: "
+			"choose final and put the answer in message, input, or output. "
+			"Choose tool_call, propose, or wait_for_approval only when the user explicitly asks for research, generation, "
+			"analysis, or a brand/workspace change that needs execution. "
 			"Never invent user_id, brand_id, role, database access, or approval. "
 			"Never apply a BrandState change; create a proposal and wait for approval.\n"
 			f"Goal: {goal}\nContext: {context}\nEvaluation: {evaluation}\n"
@@ -73,7 +77,6 @@ class GeminiGateway:
 			contents=prompt,
 			config=types.GenerateContentConfig(
 				response_mime_type="application/json",
-				response_schema=LLMPlanResponse,
 				system_instruction="NAME TAG planner must make one safe next-action decision.",
 			),
 		)
@@ -106,6 +109,8 @@ class GeminiGateway:
 			if start < 0:
 				raise
 			payload, _ = json.JSONDecoder().raw_decode(candidate[start:])
+		if isinstance(payload, list) and len(payload) == 1 and isinstance(payload[0], dict):
+			payload = payload[0]
 		if not isinstance(payload, dict):
 			raise TypeError("Planner response must be a JSON object")
 		return payload
@@ -113,6 +118,7 @@ class GeminiGateway:
 	@staticmethod
 	def _normalize_plan_payload(payload: dict[str, Any]) -> dict[str, Any]:
 		aliases = {
+			"decision": "action",
 			"tool": "tool_name",
 			"params": "arguments",
 			"parameters": "arguments",
@@ -121,9 +127,57 @@ class GeminiGateway:
 			"resource_id": "pending_resource_id",
 		}
 		normalized = dict(payload)
+		if not normalized.get("action") and isinstance(normalized.get("tool_call"), dict):
+			normalized["action"] = "tool_call"
 		for source, target in aliases.items():
 			if target not in normalized and source in normalized:
 				normalized[target] = normalized.pop(source)
+		if normalized.get("action") == "tool_call" and isinstance(normalized.get("tool_call"), dict):
+			tool_call = normalized["tool_call"]
+			normalized.setdefault("tool_name", tool_call.get("tool_name") or tool_call.get("command") or tool_call.get("name"))
+			normalized.setdefault("arguments", tool_call.get("arguments") or tool_call.get("parameters") or tool_call.get("params") or {})
+			normalized.pop("tool_call")
+		if normalized.get("action") == "tool_call" and isinstance(normalized.get("input"), dict):
+			tool_input = normalized["input"]
+			normalized.setdefault("tool_name", tool_input.get("tool_name") or tool_input.get("command") or tool_input.get("name"))
+			normalized.setdefault("arguments", tool_input.get("tool_input") or tool_input.get("arguments") or tool_input.get("parameters") or {})
+		if normalized.get("action") != "tool_call" and "message" not in normalized:
+			for source in ("output", "response"):
+				value = normalized.get(source)
+				if isinstance(value, dict):
+					value = value.get("message") or value.get("content")
+				if isinstance(value, str):
+					normalized["message"] = value
+					normalized.pop(source)
+					break
+		if normalized.get("action") == "propose" and isinstance(normalized.get("input"), dict):
+			proposal = normalized["input"]
+			normalized.setdefault("proposal_title", proposal.get("title"))
+			normalized.setdefault("proposal_summary", proposal.get("summary"))
+			normalized.setdefault("proposed_changes", proposal.get("changes"))
+			normalized.setdefault("message", proposal.get("summary"))
+		if normalized.get("action") == "wait_for_approval" and isinstance(normalized.get("input"), dict):
+			approval = normalized["input"]
+			normalized.setdefault("proposal_id", approval.get("proposal_id"))
+			normalized.setdefault("pending_resource_id", approval.get("pending_resource_id"))
+			normalized.setdefault("message", approval.get("message") or approval.get("content"))
+		if not normalized.get("reason") and isinstance(normalized.get("thought"), str):
+			normalized["reason"] = normalized["thought"]
+		if "input" in normalized:
+			target = "arguments" if normalized.get("action") == "tool_call" else "message"
+			if target not in normalized:
+				value = normalized["input"]
+				if target == "message" and isinstance(value, dict):
+					value = value.get("content") or value.get("message") or json.dumps(value, ensure_ascii=False)
+				normalized[target] = value
+			normalized.pop("input")
+		if not normalized.get("reason") and isinstance(normalized.get("message"), str):
+			normalized["reason"] = normalized["message"][:500]
+		if isinstance(normalized.get("message"), dict):
+			value = normalized["message"]
+			normalized["message"] = value.get("content") or value.get("message") or json.dumps(value, ensure_ascii=False)
+		if not normalized.get("reason") and normalized.get("action"):
+			normalized["reason"] = f"Planner가 {normalized['action']} 작업을 선택했습니다."
 		return normalized
 
 	def _parse_response(self, text: str) -> LLMResponse:

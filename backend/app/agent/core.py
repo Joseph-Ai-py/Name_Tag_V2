@@ -13,6 +13,7 @@ from app.agent.validation import AgentToolValidator
 from app.llm.schemas import LLMResponse
 from app.models.agent_run import AgentRun
 from app.models.research_job import ResearchJob
+from app.models.research_report import ResearchReport
 from app.models.tool_call import ToolCall
 from app.models.user import User
 from app.services.artifact_service import create_artifact, get_brand_artifacts
@@ -24,6 +25,7 @@ from app.services.conversation_service import (
     get_messages,
 )
 from app.services.proposal_service import create_proposal, get_brand_proposals
+from app.services.research_service import get_report_sources
 from app.services.usage_service import record_usage, start_usage
 from app.skills.executor import SkillExecutor
 from app.skills.registry import skill_registry
@@ -95,6 +97,23 @@ class AgentCore:
             {"id": item.id, "type": item.type, "title": item.title, "status": item.status}
             for item in get_brand_artifacts(self.db, self.brand_id)[:10]
         ]
+        recent_research_sources = []
+        recent_reports = self.db.scalars(
+            select(ResearchReport)
+            .where(ResearchReport.brand_id == self.brand_id)
+            .where(ResearchReport.status == "completed")
+            .order_by(ResearchReport.created_at.desc())
+            .limit(3)
+        ).all()
+        for report in recent_reports:
+            for source in get_report_sources(self.db, report.id):
+                recent_research_sources.append({
+                    "report_id": report.id,
+                    "report_title": report.title,
+                    "title": source.title,
+                    "url": source.url,
+                    "publisher": source.publisher,
+                })
         context = build_context(
             brand_state.state if brand_state else None,
             version=brand_state.version if brand_state else None,
@@ -106,6 +125,7 @@ class AgentCore:
             active_research=active_research,
             recent_artifacts=recent_artifacts,
         )
+        context["research"]["recent_sources"] = recent_research_sources
         skill_name = self._select_skill(route, message)
         context["selected_skill"] = skill_name
         context["available_tools"] = self._available_tools()
@@ -168,6 +188,9 @@ class AgentCore:
             execution.evaluations.append({"decision": decision.model_dump()})
 
             if decision.action == "final":
+                if decision.message:
+                    final_response = LLMResponse(text=decision.message)
+                    break
                 if execution.llm_calls >= execution.budget.max_llm_calls:
                     execution.status = "budget_exceeded"
                     break
@@ -193,19 +216,32 @@ class AgentCore:
                 if execution.llm_calls >= execution.budget.max_llm_calls:
                     execution.status = "budget_exceeded"
                     break
-                execution.llm_calls += 1
-                final_response = self._generate_response(decision.skill_name or skill_name, message, context, execution)
-                proposal_id = self._create_response_proposal(final_response, route, execution.base_state_version)
+                if decision.proposed_changes:
+                    final_response = LLMResponse(
+                        text=decision.proposal_summary or decision.message or "제안이 준비되었습니다.",
+                        proposed_changes=decision.proposed_changes,
+                    )
+                    proposal_id = self._create_response_proposal(
+                        final_response,
+                        route,
+                        execution.base_state_version,
+                        title=decision.proposal_title,
+                    )
+                else:
+                    execution.llm_calls += 1
+                    final_response = self._generate_response(decision.skill_name or skill_name, message, context, execution)
+                    proposal_id = self._create_response_proposal(final_response, route, execution.base_state_version)
                 break
             if decision.action != "tool_call" or decision.tool_name is None:
                 execution.status = "degraded"
                 final_response = LLMResponse(text="요청을 안전하게 판단하지 못했습니다.")
                 break
 
-            if len(execution.completed_steps) >= execution.budget.max_tool_calls:
+            if execution.tool_calls >= execution.budget.max_tool_calls:
                 execution.status = "budget_exceeded"
                 break
             tool_name = decision.tool_name
+            execution.tool_calls += 1
             try:
                 self.validator.validate(tool_name, decision.arguments, self.role)
                 result = self.tool_executor.execute(tool_name, tool_context, **decision.arguments)
@@ -221,8 +257,39 @@ class AgentCore:
                     result=result,
                 ))
                 self._apply_observation(context, tool_name, result)
+                if tool_name == "create_research_job" and isinstance(result, dict):
+                    execution.status = "waiting_for_approval"
+                    execution.waiting_for = "approval"
+                    execution.pending_resource_id = result.get("job_id")
+                    final_response = LLMResponse(
+                        text="Research Job이 생성되었습니다. 승인 후 리서치를 시작할 수 있습니다."
+                    )
+                    break
+                if tool_name == "get_research_job" and isinstance(result, dict):
+                    job_status = result.get("status")
+                    execution.pending_resource_id = result.get("job_id")
+                    if job_status == "completed":
+                        execution.status = "completed"
+                        final_response = LLMResponse(
+                            text="Research가 완료되었습니다. Research 화면에서 보고서와 근거 자료를 확인할 수 있습니다."
+                        )
+                    elif job_status == "failed":
+                        execution.status = "degraded"
+                        final_response = LLMResponse(
+                            text="Research 실행이 실패했습니다. Research 화면에서 재시도할 수 있습니다."
+                        )
+                    else:
+                        execution.status = "waiting_for_approval" if job_status in {"planning", "approved"} else "waiting_for_user"
+                        execution.waiting_for = "approval" if job_status in {"planning", "approved"} else "research"
+                        final_response = LLMResponse(
+                            text=f"Research가 현재 '{job_status}' 상태입니다. 완료 후 Research 화면에서 결과를 확인할 수 있습니다."
+                        )
+                    break
             except Exception as exc:
                 execution.failed_tools.append(tool_name)
+                execution.failure_code = "tool_execution_error"
+                execution.failure_stage = "tool_execution"
+                execution.failure_type = type(exc).__name__
                 execution.observations.append({"tool": tool_name, "error": str(exc)})
                 execution.evaluations.append({"tool": tool_name, "status": "failed", "error": str(exc)})
                 self.db.add(ToolCall(
@@ -232,14 +299,20 @@ class AgentCore:
                     arguments=decision.arguments,
                     result={"error": str(exc)},
                 ))
-                execution.status = "degraded"
-                final_response = LLMResponse(text="요청을 처리하는 동안 일부 단계가 실패했습니다.")
-                break
+                context.setdefault("agent", {}).setdefault("failed_tools", []).append(tool_name)
+                context.setdefault("agent", {}).setdefault("tool_errors", {})[tool_name] = {
+                    "error": str(exc),
+                    "type": type(exc).__name__,
+                }
+                continue
 
         if final_response is None:
             final_response = LLMResponse(text="작업을 완료하지 못했습니다. 실행 기록을 확인해 주세요.")
         if execution.status == "running":
-            execution.status = "budget_exceeded" if execution.iteration >= execution.budget.max_iterations else "completed"
+            if execution.failed_tools:
+                execution.status = "degraded"
+            else:
+                execution.status = "budget_exceeded" if execution.iteration >= execution.budget.max_iterations else "completed"
         if final_response.proposed_changes and proposal_id is None:
             try:
                 proposal_id = self._create_response_proposal(final_response, route, execution.base_state_version)
@@ -273,7 +346,11 @@ class AgentCore:
             "status": execution.status,
             "iterations": execution.iteration,
             "tools_used": execution.completed_steps,
+            "tool_calls": execution.tool_calls,
             "llm_calls": execution.llm_calls,
+            "failure_code": execution.failure_code,
+            "failure_stage": execution.failure_stage,
+            "failure_type": execution.failure_type,
             "proposal_id": proposal_id,
             "artifact_id": artifact.id if artifact else None,
         }
@@ -292,7 +369,11 @@ class AgentCore:
                 "status": execution.status,
                 "iterations": execution.iteration,
                 "tools_used": execution.completed_steps,
+                "tool_calls": execution.tool_calls,
                 "llm_calls": execution.llm_calls,
+                "failure_code": execution.failure_code,
+                "failure_stage": execution.failure_stage,
+                "failure_type": execution.failure_type,
                 "waiting_for": execution.waiting_for,
                 "pending_resource_id": execution.pending_resource_id,
             },
@@ -316,6 +397,7 @@ class AgentCore:
         response: LLMResponse,
         route: str,
         base_state_version: int | None,
+        title: str | None = None,
     ) -> str | None:
         if not response.proposed_changes:
             return None
@@ -323,7 +405,7 @@ class AgentCore:
             db=self.db,
             brand_id=self.brand_id,
             user_id=self.user.id,
-            title=f"{route.title()} 제안",
+            title=title or f"{route.title()} 제안",
             summary=response.text,
             changes=response.proposed_changes,
             base_state_version=base_state_version,
@@ -341,6 +423,9 @@ class AgentCore:
             return self.skill_executor.execute(skill_name=skill_name, message=message, context=context)
         except Exception as exc:
             execution.status = "degraded"
+            execution.failure_code = "response_generation_error"
+            execution.failure_stage = "response_generation"
+            execution.failure_type = type(exc).__name__
             context["llm_error"] = str(exc)
             return LLMResponse(text="요청을 처리하는 동안 일부 단계가 실패했습니다.")
 
@@ -371,6 +456,7 @@ class AgentCore:
     def _sync_context(context: dict[str, Any], execution: AgentExecutionState) -> None:
         context["agent_state"] = execution.as_dict()
         context.setdefault("agent", {})["tool_results"] = execution.tool_results
+        context.setdefault("agent", {})["failed_tools"] = execution.failed_tools
         context["tool_results"] = execution.tool_results
         context["evaluations"] = execution.evaluations
 

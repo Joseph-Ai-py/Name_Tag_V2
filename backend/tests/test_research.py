@@ -100,6 +100,20 @@ def test_deep_research_plan_job_approval_and_cancel(client: TestClient) -> None:
     assert invalid.status_code == 409
 
 
+def test_approving_already_approved_research_job_is_idempotent(client: TestClient) -> None:
+    signup(client, "idempotent-research@example.com")
+    brand_id = create_brand(client)
+    plan = client.post("/api/research/plan", json={"brand_id": brand_id, "query": "중복 승인 테스트"}).json()
+    created = client.post("/api/research/jobs", json={"brand_id": brand_id, "query": "중복 승인 테스트", "plan": plan})
+    job_id = created.json()["id"]
+
+    assert client.post(f"/api/research/jobs/{job_id}/approve").status_code == 200
+    second = client.post(f"/api/research/jobs/{job_id}/approve")
+
+    assert second.status_code == 200
+    assert second.json()["status"] == "approved"
+
+
 def test_approved_deep_research_job_runs_and_creates_report(client: TestClient) -> None:
     signup(client, "deep-run@example.com")
     brand_id = create_brand(client)

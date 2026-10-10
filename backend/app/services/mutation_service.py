@@ -90,7 +90,7 @@ def apply_changes(
 
     validate_brand_state_change_paths(changes)
 
-    for path, value in changes.items():
+    for path, value in _flatten_allowed_changes(changes):
         if "." in path:
             section, field = path.split(".", 1)
         else:
@@ -108,3 +108,18 @@ def apply_changes(
         next_state[section][field] = value
 
     return current_state, next_state
+
+
+def _flatten_allowed_changes(changes: dict[str, Any]) -> list[tuple[str, Any]]:
+    flattened: list[tuple[str, Any]] = []
+
+    def visit(prefix: str, value: Any) -> None:
+        if prefix in ALLOWED_PATHS or not isinstance(value, dict):
+            flattened.append((prefix, value))
+            return
+        for key, nested in value.items():
+            visit(f"{prefix}.{key}" if prefix else key, nested)
+
+    for path, value in changes.items():
+        visit(path, value)
+    return flattened

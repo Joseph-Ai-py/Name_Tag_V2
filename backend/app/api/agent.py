@@ -7,7 +7,9 @@ from app.dependencies import get_current_user, get_database
 from app.models.user import User
 from app.models.agent_run import AgentRun
 from app.models.tool_call import ToolCall
+from app.models.research_job import ResearchJob
 from app.schemas.agent import AgentChatRequest, AgentChatResponse
+from app.services.proposal_service import get_proposal
 from app.schemas.agent_run import AgentRunResponse, ToolCallResponse
 from app.schemas.meeting import MeetingCreateRequest, MeetingDecisionResponse, MeetingOpinionResponse, MeetingResponse
 from app.schemas.artifact import ArtifactResponse
@@ -84,6 +86,19 @@ def chat(
 		raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 	artifact = result["artifact"]
+	proposal = get_proposal(db, payload.brand_id, result["proposal_id"]) if result.get("proposal_id") else None
+	research_job = None
+	pending_resource_id = result["execution"].get("pending_resource_id")
+	if pending_resource_id:
+		job = db.get(ResearchJob, pending_resource_id)
+		if job is not None and job.brand_id == payload.brand_id:
+			research_job = {
+				"id": job.id,
+				"query": job.query,
+				"status": job.status,
+				"plan": job.plan,
+				"progress": job.progress,
+			}
 	artifact_response = None
 	if artifact is not None:
 		artifact_response = ArtifactResponse(
@@ -104,6 +119,15 @@ def chat(
 		message=result["message"],
 		artifact=artifact_response,
 		proposal_id=result.get("proposal_id"),
+		proposal={
+			"id": proposal.id,
+			"title": proposal.title,
+			"summary": proposal.summary,
+			"changes": proposal.changes,
+			"status": proposal.status,
+			"base_state_version": proposal.base_state_version,
+		} if proposal else None,
+		research_job=research_job,
 		context=result["context"],
 		agent={
 			"run_id": result.get("run_id"),

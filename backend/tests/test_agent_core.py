@@ -2,8 +2,10 @@ import pytest
 from pydantic import ValidationError
 
 from app.agent.context_manager import build_context
+from app.agent.core import AgentCore
 from app.agent.evaluator import AgentEvaluator
-from app.agent.state import AgentDecision
+from app.agent.planner import AgentPlanner
+from app.agent.state import AgentBudget, AgentDecision, AgentExecutionState
 from app.agent.validation import AgentToolValidator
 from app.llm.gateway import MockLLMGateway
 
@@ -89,3 +91,25 @@ def test_mock_planner_can_receive_deterministic_decisions() -> None:
 
     assert decision.action == "final"
     assert decision.confidence == 1.0
+
+
+def test_planner_gateway_failure_is_recorded_on_execution_state() -> None:
+    class FailingGateway:
+        def plan_agent(self, **kwargs):
+            raise TimeoutError("planner timed out")
+
+    state = AgentExecutionState(
+        goal="hello",
+        mode="simple",
+        route="conversation",
+        budget=AgentBudget(),
+    )
+
+    decision = AgentPlanner(FailingGateway()).decide("hello", {}, state, [], [], {})
+
+    assert decision.action == "ask_user"
+    assert state.failure_code == "planner_gateway_error"
+    assert state.failure_stage == "planner"
+    assert state.failure_type == "TimeoutError"
+
+

@@ -24,6 +24,9 @@ class AgentDecision(BaseModel):
     skill_name: str | None = None
     proposal_id: str | None = None
     pending_resource_id: str | None = None
+    proposal_title: str | None = None
+    proposal_summary: str | None = None
+    proposed_changes: dict[str, Any] | None = None
 
     @model_validator(mode="after")
     def validate_action_payload(self) -> "AgentDecision":
@@ -33,8 +36,6 @@ class AgentDecision(BaseModel):
             raise ValueError(f"{self.action} requires message")
         if self.action == "wait_for_approval" and not (self.proposal_id or self.pending_resource_id):
             raise ValueError("wait_for_approval requires a pending resource")
-        if self.action == "propose" and not self.skill_name:
-            raise ValueError("propose requires skill_name")
         if self.action != "tool_call" and self.tool_name is not None:
             raise ValueError("tool_name is only valid for tool_call")
         return self
@@ -54,6 +55,7 @@ class AgentExecutionState:
     budget: AgentBudget = field(default_factory=AgentBudget)
     iteration: int = 0
     llm_calls: int = 0
+    tool_calls: int = 0
     completed_steps: list[str] = field(default_factory=list)
     pending_steps: list[str] = field(default_factory=list)
     tool_results: dict[str, Any] = field(default_factory=dict)
@@ -63,6 +65,9 @@ class AgentExecutionState:
     waiting_for: str | None = None
     pending_resource_id: str | None = None
     base_state_version: int | None = None
+    failure_code: str | None = None
+    failure_stage: str | None = None
+    failure_type: str | None = None
     status: str = "running"
 
     def as_dict(self) -> dict[str, Any]:
@@ -73,6 +78,7 @@ class AgentExecutionState:
             "budget": self.budget.model_dump(),
             "iteration": self.iteration,
             "llm_calls": self.llm_calls,
+            "tool_calls": self.tool_calls,
             "completed_steps": self.completed_steps,
             "pending_steps": self.pending_steps,
             "tool_results": self.tool_results,
@@ -82,5 +88,8 @@ class AgentExecutionState:
             "waiting_for": self.waiting_for,
             "pending_resource_id": self.pending_resource_id,
             "base_state_version": self.base_state_version,
+            "failure_code": self.failure_code,
+            "failure_stage": self.failure_stage,
+            "failure_type": self.failure_type,
             "status": self.status,
         }

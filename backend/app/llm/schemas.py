@@ -31,6 +31,9 @@ class LLMPlanResponse(BaseModel):
 	skill_name: str | None = None
 	proposal_id: str | None = None
 	pending_resource_id: str | None = None
+	proposal_title: str | None = None
+	proposal_summary: str | None = None
+	proposed_changes: dict[str, Any] | None = None
 
 	def to_decision(self) -> AgentDecision:
 		return AgentDecision.model_validate(self.model_dump())

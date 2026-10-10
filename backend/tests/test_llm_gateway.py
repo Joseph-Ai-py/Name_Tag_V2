@@ -96,6 +96,254 @@ def test_gemini_gateway_parses_fenced_planner_aliases() -> None:
     assert normalized["arguments"] == {}
 
 
+def test_gemini_gateway_accepts_developer_api_planner_payload(monkeypatch) -> None:
+    models = FakeModels()
+    models.response_text = '{"action":"tool_call","tool_name":"get_brand_state","input":{}}'
+    monkeypatch.setattr(
+        "google.genai.Client",
+        lambda api_key: FakeClient(models),
+    )
+
+    gateway = GeminiGateway(api_key="test-key", model="test-model")
+    decision = gateway.plan_agent("브랜드 상태를 보여줘", {}, [], [], {})
+
+    assert decision.action == "tool_call"
+    assert decision.tool_name == "get_brand_state"
+    assert decision.arguments == {}
+    assert "response_schema" not in models.calls[0]["config"]
+
+
+def test_gemini_gateway_treats_final_input_as_message(monkeypatch) -> None:
+    models = FakeModels()
+    models.response_text = '{"action":"final","input":"완료된 답변입니다."}'
+    monkeypatch.setattr(
+        "google.genai.Client",
+        lambda api_key: FakeClient(models),
+    )
+
+    gateway = GeminiGateway(api_key="test-key", model="test-model")
+    decision = gateway.plan_agent("안녕하세요", {}, [], [], {})
+
+    assert decision.action == "final"
+    assert decision.message == "완료된 답변입니다."
+
+
+def test_gemini_gateway_extracts_content_from_structured_final_input(monkeypatch) -> None:
+    models = FakeModels()
+    models.response_text = '{"action":"final","input":{"content":"대화 답변입니다."}}'
+    monkeypatch.setattr(
+        "google.genai.Client",
+        lambda api_key: FakeClient(models),
+    )
+
+    gateway = GeminiGateway(api_key="test-key", model="test-model")
+    decision = gateway.plan_agent("안녕하세요", {}, [], [], {})
+
+    assert decision.action == "final"
+    assert decision.message == "대화 답변입니다."
+
+
+def test_gemini_gateway_accepts_final_output_as_message(monkeypatch) -> None:
+    models = FakeModels()
+    models.response_text = '{"action":"final","thought":"인사에 답합니다.","output":"반갑습니다."}'
+    monkeypatch.setattr(
+        "google.genai.Client",
+        lambda api_key: FakeClient(models),
+    )
+
+    gateway = GeminiGateway(api_key="test-key", model="test-model")
+    decision = gateway.plan_agent("안녕하세요", {}, [], [], {})
+
+    assert decision.action == "final"
+    assert decision.reason == "인사에 답합니다."
+    assert decision.message == "반갑습니다."
+
+
+def test_gemini_gateway_prefers_final_output_over_echoed_input(monkeypatch) -> None:
+    models = FakeModels()
+    models.response_text = (
+        '{"action":"final","input":"지금 내 브랜드는 뭐야?",'
+        '"output":"현재 브랜드는 AI Product Builder입니다."}'
+    )
+    monkeypatch.setattr(
+        "google.genai.Client",
+        lambda api_key: FakeClient(models),
+    )
+
+    gateway = GeminiGateway(api_key="test-key", model="test-model")
+    decision = gateway.plan_agent("지금 내 브랜드는 뭐야?", {}, [], [], {})
+
+    assert decision.message == "현재 브랜드는 AI Product Builder입니다."
+
+
+def test_gemini_gateway_extracts_message_from_object_output(monkeypatch) -> None:
+    models = FakeModels()
+    models.response_text = (
+        '{"action":"final","input":{"goal":"내 브랜드 포지셔닝은 뭐야?"},'
+        '"output":{"message":"현재 포지셔닝은 기술을 비즈니스 가치로 전환하는 엔드투엔드 해결사입니다."}}'
+    )
+    monkeypatch.setattr(
+        "google.genai.Client",
+        lambda api_key: FakeClient(models),
+    )
+
+    gateway = GeminiGateway(api_key="test-key", model="test-model")
+    decision = gateway.plan_agent("내 브랜드 포지셔닝은 뭐야?", {}, [], [], {})
+
+    assert decision.message == "현재 포지셔닝은 기술을 비즈니스 가치로 전환하는 엔드투엔드 해결사입니다."
+
+
+def test_gemini_gateway_accepts_single_decision_array(monkeypatch) -> None:
+    models = FakeModels()
+    models.response_text = (
+        '[{"action":"final","input":{"message":"브랜드 Overview 초안입니다."}}]'
+    )
+    monkeypatch.setattr(
+        "google.genai.Client",
+        lambda api_key: FakeClient(models),
+    )
+
+    gateway = GeminiGateway(api_key="test-key", model="test-model")
+    decision = gateway.plan_agent("브랜드 Overview를 작성해줘", {}, [], [], {})
+
+    assert decision.action == "final"
+    assert decision.message == "브랜드 Overview 초안입니다."
+
+
+def test_gemini_gateway_parses_proposal_payload(monkeypatch) -> None:
+    models = FakeModels()
+    models.response_text = (
+        '[{"action":"propose","input":{"title":"브랜드 정교화",'
+        '"summary":"브랜드 정체성을 업데이트합니다.",'
+        '"changes":{"brand.positioning":"기술을 가치로 전환하는 전문가"}}}]'
+    )
+    monkeypatch.setattr(
+        "google.genai.Client",
+        lambda api_key: FakeClient(models),
+    )
+
+    gateway = GeminiGateway(api_key="test-key", model="test-model")
+    decision = gateway.plan_agent("브랜드를 개선해줘", {}, [], [], {})
+
+    assert decision.action == "propose"
+    assert decision.proposal_title == "브랜드 정교화"
+    assert decision.proposal_summary == "브랜드 정체성을 업데이트합니다."
+    assert decision.proposed_changes == {"brand.positioning": "기술을 가치로 전환하는 전문가"}
+
+
+def test_gemini_gateway_parses_wait_for_approval_input(monkeypatch) -> None:
+    models = FakeModels()
+    models.response_text = (
+        '[{"action":"wait_for_approval","input":{"proposal_id":"proposal-1",'
+        '"message":"제안을 승인해 주세요."}}]'
+    )
+    monkeypatch.setattr(
+        "google.genai.Client",
+        lambda api_key: FakeClient(models),
+    )
+
+    gateway = GeminiGateway(api_key="test-key", model="test-model")
+    decision = gateway.plan_agent("제안을 적용해줘", {}, [], [], {})
+
+    assert decision.action == "wait_for_approval"
+    assert decision.proposal_id == "proposal-1"
+    assert decision.message == "제안을 승인해 주세요."
+
+
+def test_gemini_gateway_accepts_decision_alias_for_action(monkeypatch) -> None:
+    models = FakeModels()
+    models.response_text = (
+        '[{"decision":"final","message":"다시 확인해 보겠습니다."}]'
+    )
+    monkeypatch.setattr(
+        "google.genai.Client",
+        lambda api_key: FakeClient(models),
+    )
+
+    gateway = GeminiGateway(api_key="test-key", model="test-model")
+    decision = gateway.plan_agent("다시 해봐", {}, [], [], {})
+
+    assert decision.action == "final"
+    assert decision.reason == "다시 확인해 보겠습니다."
+    assert decision.message == "다시 확인해 보겠습니다."
+
+
+def test_gemini_gateway_parses_nested_tool_call_command(monkeypatch) -> None:
+    models = FakeModels()
+    models.response_text = (
+        '{"action":"tool_call","tool_call":{"command":"create_research_job",'
+        '"parameters":{"query":"시장 규모 분석"}}}'
+    )
+    monkeypatch.setattr(
+        "google.genai.Client",
+        lambda api_key: FakeClient(models),
+    )
+
+    gateway = GeminiGateway(api_key="test-key", model="test-model")
+    decision = gateway.plan_agent("시장 규모를 조사해줘", {}, [], [], {})
+
+    assert decision.action == "tool_call"
+    assert decision.tool_name == "create_research_job"
+    assert decision.arguments == {"query": "시장 규모 분석"}
+
+
+def test_gemini_gateway_parses_tool_call_inside_input(monkeypatch) -> None:
+    models = FakeModels()
+    models.response_text = (
+        '{"action":"tool_call","input":{"tool_name":"create_research_job",'
+        '"tool_input":{"query":"TAM SAM SOM 분석"}}}'
+    )
+    monkeypatch.setattr(
+        "google.genai.Client",
+        lambda api_key: FakeClient(models),
+    )
+
+    gateway = GeminiGateway(api_key="test-key", model="test-model")
+    decision = gateway.plan_agent("시장 규모를 조사해줘", {}, [], [], {})
+
+    assert decision.action == "tool_call"
+    assert decision.tool_name == "create_research_job"
+    assert decision.arguments == {"query": "TAM SAM SOM 분석"}
+
+
+def test_gemini_gateway_parses_named_nested_tool_call_with_plan(monkeypatch) -> None:
+    models = FakeModels()
+    models.response_text = (
+        '[{"action":"tool_call","tool_call":{"name":"create_research_job",'
+        '"arguments":{"query":"시장 규모 분석","plan":{"steps":["시장 조사"]}}}}]'
+    )
+    monkeypatch.setattr(
+        "google.genai.Client",
+        lambda api_key: FakeClient(models),
+    )
+
+    gateway = GeminiGateway(api_key="test-key", model="test-model")
+    decision = gateway.plan_agent("시장 규모를 조사해줘", {}, [], [], {})
+
+    assert decision.action == "tool_call"
+    assert decision.tool_name == "create_research_job"
+    assert decision.arguments["plan"]["steps"] == ["시장 조사"]
+
+
+def test_gemini_gateway_inferrs_tool_call_action_when_omitted(monkeypatch) -> None:
+    models = FakeModels()
+    models.response_text = (
+        '[{"tool_call":{"name":"create_research_job",'
+        '"arguments":{"query":"시장 분석"}}}]'
+    )
+    monkeypatch.setattr(
+        "google.genai.Client",
+        lambda api_key: FakeClient(models),
+    )
+
+    gateway = GeminiGateway(api_key="test-key", model="test-model")
+    decision = gateway.plan_agent("시장 분석을 해줘", {}, [], [], {})
+
+    assert decision.action == "tool_call"
+    assert decision.tool_name == "create_research_job"
+    assert decision.arguments == {"query": "시장 분석"}
+
+
 def test_gemini_gateway_plan_agent_falls_back_with_parse_diagnostics(monkeypatch, caplog) -> None:
     models = FakeModels()
     models.response_text = "브랜드 상태를 확인할게요."
