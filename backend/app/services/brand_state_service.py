@@ -9,6 +9,7 @@ from app.models.history import History
 from app.models.snapshot import Snapshot
 from app.services.mutation_service import validate_brand_state_change_paths
 from app.core.exceptions import BrandStateVersionConflictError
+from app.core.legacy_template import canonical_section_extensions
 
 
 def create_initial_brand_state(
@@ -65,6 +66,8 @@ def create_initial_brand_state(
         "feedback": [],
         "decisions": [],
     }
+    for section_name, extensions in canonical_section_extensions().items():
+        initial_state[section_name].update(extensions)
 
     brand_state = BrandState(
         brand_id=brand_id,

@@ -45,6 +45,10 @@ def test_brand_crud_and_state_patch_preserves_other_sections(client: TestClient)
     assert body["state"]["business"]["service"] == "AI Workspace"
     assert body["state"]["customer"]["target"] is None
     assert body["state"]["visual"]["colors"] == []
+    assert "legacy" not in body["state"]
+    assert "brand_philosophy" in body["state"]["brand"]
+    assert "persona_strategy" in body["state"]["customer"]
+    assert "visual_mood_guide" in body["state"]["visual"]
 
     history = client.get(f"/api/brands/{brand_id}/history")
     assert history.status_code == 200, history.text

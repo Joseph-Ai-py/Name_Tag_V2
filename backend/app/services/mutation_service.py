@@ -29,8 +29,22 @@ ALLOWED_PATHS = {
     "customer.pain_points",
     "customer.journey",
     "customer.jtbd",
+    "customer.persona_strategy",
+    "customer.journey_detail",
 
     "brand.name",
+    "brand.name_en",
+    "brand.name_meaning",
+    "brand.seed_color",
+    "brand.seed_color_reason",
+    "brand.interview_data",
+    "brand.brand_philosophy",
+    "brand.brand_essence",
+    "brand.value_details",
+    "brand.naming_expansion",
+    "brand.slogan_expansion",
+    "brand.positioning_detail",
+    "brand.unbreakable_brand_promise",
     "brand.mission",
     "brand.vision",
     "brand.values",
@@ -46,6 +60,10 @@ ALLOWED_PATHS = {
     "visual.mood",
     "visual.logo",
     "visual.character",
+    "visual.visual_mood_guide",
+    "visual.design_principles",
+    "visual.logo_path",
+    "visual.char_path",
 }
 
 

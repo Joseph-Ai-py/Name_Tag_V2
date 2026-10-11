@@ -658,27 +658,27 @@ function MarketWorkspaceView({ state, exportData }: { state: WorkspaceState; exp
 	const market = asObject(asObject(fullState.state).market);
 	const swot = asObject(market.swot);
 	const blocks = [
-		["strengths", "Strengths", "강점", "#83d4c6", "내부에 이미 갖고 있는 힘"],
-		["weaknesses", "Weaknesses", "약점", "#9cd0fa", "내부에서 보완해야 할 부분"],
-		["opportunities", "Opportunities", "기회", "#fce068", "외부 환경이 열어주는 가능성"],
-		["threats", "Threats", "위협", "#f7bdae", "외부에서 주의할 변화"],
+		["strengths", "Strengths", "강점", "내부에 이미 갖고 있는 힘"],
+		["weaknesses", "Weaknesses", "약점", "내부에서 보완해야 할 부분"],
+		["opportunities", "Opportunities", "기회", "외부 환경이 열어주는 가능성"],
+		["threats", "Threats", "위협", "외부에서 주의할 변화"],
 	] as const;
 	const hasSwot = blocks.some(([key]) => Array.isArray(swot[key]) && swot[key].length > 0);
-	return <section className="market-workspace"><header className="market-workspace-header"><div><span className="eyebrow">MARKET INTELLIGENCE</span><h3>시장을 읽고<br /><em>다음 기회</em>를 찾습니다.</h3><p>저장된 Market 데이터와 Research 근거를 바탕으로 SWOT을 내부 역량과 외부 환경으로 나누어 검토합니다.</p></div><div className="market-current"><span>CURRENT SIGNAL</span><strong>{compactValue(state.market.trend, "시장 트렌드 미정")}</strong><small>{compactValue(state.market.competitors, "경쟁 환경 미정")}</small></div></header><TamSamSomView market={market} /><div className="swot-editorial"><div className="swot-axis-top"><span /> <span>The good</span><span>The not-so-good</span></div><div className="swot-axis-row"><span className="swot-axis-label">What we've got</span>{blocks.slice(0, 2).map(([key, title, korean, color, icon, description]) => <SwotCard key={key} items={swot[key]} title={title} korean={korean} color={color} icon={icon} description={description} />)}</div><div className="swot-axis-row"><span className="swot-axis-label">What's out there</span>{blocks.slice(2).map(([key, title, korean, color, icon, description]) => <SwotCard key={key} items={swot[key]} title={title} korean={korean} color={color} icon={icon} description={description} />)}</div></div>{!hasSwot && <div className="market-empty"><BarChart3 size={20} /><strong>아직 SWOT 데이터가 없습니다.</strong><p>Research 결과 또는 AI Consultant의 Market 분석 Proposal을 승인하면 이곳에 표시됩니다.</p></div>}</section>;
+	return <section className="market-workspace"><header className="market-workspace-header"><div><span className="eyebrow">MARKET INTELLIGENCE</span><h3>시장을 읽고<br /><em>다음 기회</em>를 찾습니다.</h3><p>저장된 Market 데이터와 Research 근거를 바탕으로 SWOT을 내부 역량과 외부 환경으로 나누어 검토합니다.</p></div><div className="market-current"><span>CURRENT SIGNAL</span><strong>{compactValue(state.market.trend, "시장 트렌드 미정")}</strong><small>{compactValue(state.market.competitors, "경쟁 환경 미정")}</small></div></header><TamSamSomView market={market} /><div className="swot-editorial"><div className="swot-axis-top"><span /> <span>Internal</span><span>External</span></div><div className="swot-axis-row"><span className="swot-axis-label">Positive</span>{blocks.slice(0, 2).map(([key, title, korean, description]) => <SwotCard key={key} items={swot[key]} title={title} korean={korean} description={description} />)}</div><div className="swot-axis-row"><span className="swot-axis-label">Needs attention</span>{blocks.slice(2).map(([key, title, korean, description]) => <SwotCard key={key} items={swot[key]} title={title} korean={korean} description={description} />)}</div></div>{!hasSwot && <div className="market-empty"><BarChart3 size={20} /><strong>아직 SWOT 데이터가 없습니다.</strong><p>Research 결과 또는 AI Consultant의 Market 분석 Proposal을 승인하면 이곳에 표시됩니다.</p></div>}</section>;
 }
 
-function SwotCard({ items, title, korean, color, icon, description }: { items: unknown; title: string; korean: string; color: string; icon: string; description: string }) {
+function SwotCard({ items, title, korean, description }: { items: unknown; title: string; korean: string; description: string }) {
 	const values = Array.isArray(items) ? items : items ? [items] : [];
-	return <article className="swot-editorial-card" style={{ backgroundColor: color }}><div className="swot-card-top"><span className="swot-number">{korean}</span><span className="swot-icon">{icon}</span></div><h4>{title}</h4><small>{description}</small>{values.length ? <ul>{values.map((item, index) => <li key={index}>{compactValue(item, "미정")}</li>)}</ul> : <p className="swot-card-empty">아직 정의되지 않았습니다.</p>}</article>;
+	return <article className="swot-editorial-card"><div className="swot-card-top"><span className="swot-number">{korean}</span></div><h4>{title}</h4><small>{description}</small>{values.length ? <ul>{values.map((item, index) => <li key={index}>{compactValue(item, "미정")}</li>)}</ul> : <p className="swot-card-empty">아직 정의되지 않았습니다.</p>}</article>;
 }
 
 function TamSamSomView({ market }: { market: Record<string, unknown> }) {
 	const levels = [
-		["TAM", "Total Addressable Market", "전체 시장 규모", market.tam, "box-tam"],
-		["SAM", "Serviceable Available Market", "서비스로 접근 가능한 시장", market.sam, "box-sam"],
-		["SOM", "Serviceable Obtainable Market", "현실적으로 확보 가능한 시장", market.som, "box-som"],
+		["TAM", "Total Addressable Market", "전체 시장 규모", market.tam],
+		["SAM", "Serviceable Available Market", "서비스로 접근 가능한 시장", market.sam],
+		["SOM", "Serviceable Obtainable Market", "현실적으로 확보 가능한 시장", market.som],
 	] as const;
-	return <section className="tam-sam-som"><div className="tam-sam-som-graphic"><div className="tam-circle tam-circle-tam" /><div className="tam-circle tam-circle-sam" /><div className="tam-circle tam-circle-som" /></div><div className="tam-sam-som-text">{levels.map(([acronym, title, focus, value, boxClass]) => <article className={`tam-box ${boxClass}`} key={acronym}><strong className="tam-acronym">{acronym}</strong><div><h4>{title}</h4><span>Focus on</span><p>{focus}</p><span>Saved value</span><p className="tam-value">{compactValue(value, "아직 산정되지 않았습니다.")}</p></div></article>)}</div></section>;
+	return <section className="tam-sam-som"><div className="tam-sam-som-heading"><span className="eyebrow">MARKET SIZE</span><h4>TAM / SAM / SOM</h4><p>저장된 시장 규모와 산출 결과를 단계별로 확인합니다.</p></div><div className="tam-sam-som-text">{levels.map(([acronym, title, focus, value]) => <article className="tam-box" key={acronym}><strong className="tam-acronym">{acronym}</strong><div><h4>{title}</h4><span>Scope</span><p>{focus}</p><span>Saved value</span><p className="tam-value">{compactValue(value, "아직 산정되지 않았습니다.")}</p></div></article>)}</div></section>;
 }
 
 function DomainWorkspaceView({ section, state, exportData, onCanvasSave }: { section: Section; state: WorkspaceState; exportData: ExportPayload | null; onCanvasSave: (model: Record<string, unknown>) => Promise<void> }) {
